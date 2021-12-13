@@ -1,4 +1,5 @@
 # Tutorial for both DQN and DQN with Prioritized Experience Replay
+# for prioritized replay version uncomment line 48
 
 import gym
 import matplotlib.pyplot as plt
@@ -16,6 +17,7 @@ env = gym.make('CartPole-v0')
 
 # pick a suitable device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 # create the deep network
 class net(nn.Module):
@@ -36,14 +38,15 @@ class net(nn.Module):
 
 # init necessities
 Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
-optimizer = optim.Adam(Qnetwork.parameters(), lr=0.005)
+optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
 trainExplortionStrategy = epsilonGreedyAction(Qnetwork, 0.5, 0.05, 100)
 evalExplortionStrategy = greedyAction(Qnetwork)
 
 
 ## choose a replay buffer or implement your own
-# replayBuffer = ExperienceReplayBuffer(bufferSize=5000) # for uniform sampling 
-replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=5000, alpha=0.2, beta=0.2, beta_rate=0.002) # prioritized sampling
+replayBuffer = ExperienceReplayBuffer(bufferSize=4096) # for uniform sampling 
+# replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=4096, alpha=0.2, beta=0.2, beta_rate=0.002) # prioritized sampling
+
 
 # define the training strategy DQN in our example
 DQNagent = DQN(Qnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 64, MaxTrainEpisodes=500, skipSteps=1, device=device)

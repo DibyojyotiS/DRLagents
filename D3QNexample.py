@@ -1,4 +1,5 @@
 # Tutorial for both DDDQN and DDDQN with Prioritized Experience Replay
+# for prioritized replay version uncomment line 53
 
 import gym
 import matplotlib.pyplot as plt
@@ -49,8 +50,9 @@ evalExplortionStrategy = greedyAction(duellingQnetwork)
 
 
 ## choose wether prioritized replay buffer or uniform sampling replay buffer or implement your own
-replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=4096, alpha=0.6, beta=0.2, beta_rate=0.005, bufferType='replace-min') # prioritized sampling
-# replayBuffer = ExperienceReplayBuffer(bufferSize=4096) # uniform sampling, windowed memory
+replayBuffer = ExperienceReplayBuffer(bufferSize=4096) # uniform sampling, windowed memory
+# replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=4096, alpha=0.6, beta=0.2, beta_rate=0.005, bufferType='replace-min') # prioritized sampling
+
 
 # define the training strategy DQN in our example
 DQNagent = DDQN(duellingQnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 64,
