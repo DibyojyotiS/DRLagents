@@ -12,7 +12,7 @@ from replaybuffers import ReplayBuffer
 from utils.weightedLosses import weighted_MSEloss
 
 # things to discuss about skipping frames
-# 1. how to accumulate the rewards to train on? -> currently discounted as in https://arxiv.org/pdf/2102.03718.pdf
+# 1. how to accumulate the rewards in the skipped frames? -> currently a cumulative (summed) reward
 
 class DQN:
     """ This class implements the DQN training algorithm. \n
@@ -34,6 +34,8 @@ class DQN:
                 MaxStepsPerEpisode = None,
                 loss = weighted_MSEloss,
                 update_freq = 5,
+                optimize_kth_step = 1,
+                num_gradient_steps = 1,
 
                 # miscellaneous
                 skipSteps = 0,
@@ -75,6 +77,11 @@ class DQN:
                 For weighted_loss examples look in DRLagents.utils.weightedLosses
                 
         update_freq: target model is updated every update_freq episodes
+
+        optimize_kth_step: the online model is update after every kth step (action). 
+                            To train the online model only at the end of an episode set this to -1
+
+        num_gradient_steps: the number of gradient updates every optimize_kth_step.
 
 
         ## miscellaneous 
@@ -120,6 +127,8 @@ class DQN:
         self.lossfn = loss
         self.update_freq = update_freq
         self.replayBuffer = replayBuffer
+        self.optimize_kth_step = optimize_kth_step
+        self.num_gradient_steps = num_gradient_steps
         
         # miscellaneous args
         self.skipSteps = skipSteps + 1
@@ -132,6 +141,7 @@ class DQN:
         # required inits
         self.target_model.eval()
         self._initBookKeeping()
+        self.optimize_at_end = optimize_kth_step==-1
         
 
     def trainAgent(self):
@@ -160,24 +170,28 @@ class DQN:
                 action = self.trainExplortionStrategy.select_action(state)
 
                 # repeat the action skipStep number of times
-                nextState, discountedReward, sumReward, done, stepsTaken = self._take_steps(action)
-
-                nextState, action, discountedReward, done = self._astensor(nextState, action, discountedReward, done)
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, action, accumulatedReward, done = self._astensor(nextState, action, accumulatedReward, done)
 
                 # push observation in replay buffer
-                self.replayBuffer.store(state, action, discountedReward, nextState, done)
+                self.replayBuffer.store(state, action, accumulatedReward, nextState, done)
 
                 # optimize model
-                loss = self._optimizeModel()
+                if not self.optimize_at_end and steps % self.optimize_kth_step == 0:
+                    loss = self._optimizeModel()
+                    totalLoss += loss
 
                 steps += stepsTaken
                 totalReward += sumReward
-                totalLoss += loss
 
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
 
                 # update state
                 state = nextState
+
+            # if required optimize at the episode end
+            if self.optimize_at_end:
+                totalLoss = self._optimizeModel()
 
             # decay exploration strategy params
             self.trainExplortionStrategy.decay()
@@ -237,8 +251,8 @@ class DQN:
                 action = evalExplortionStrategy.select_action(state)
 
                 # repeat the action skipStep number of times
-                nextState, discountedReward, sumReward, done, stepsTaken = self._take_steps(action, render=render)
-                nextState, action, discountedReward, done = self._astensor(nextState, action, discountedReward, done)
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action, render=render)
+                nextState, action, accumulatedReward, done = self._astensor(nextState, action, accumulatedReward, done)
 
                 steps += stepsTaken
                 totalReward += sumReward
@@ -298,24 +312,34 @@ class DQN:
         For those deriving something from DQN class: This function only implements the
         one step backprop, however the loss is computed seperatedly in the _compute_loss function
         which returns a scalar tensor representing the loss. If only the computation of loss has to 
-        be modified then no need to modify _optimizeModel, modify the _compute_loss function """
+        be modified then no need to modify _optimizeModel, modify the _compute_loss function 
+
+        returns the loss (as a float type - used only for plotting purposes)
+        """
         
         if len(self.replayBuffer) < self.batchSize: return 0
 
-        # sample a batch from ReplayBuffer
-        sample = self.replayBuffer.sample(self.batchSize)
-        states, actions, rewards, nextStates, dones, indices, sampleWeights = self._split_sample(sample)
+        total_loss = 0
 
-        # compute the loss
-        loss = self._compute_loss_n_updateBuffer(states, actions, rewards, nextStates, dones, indices, sampleWeights)
+        # do self.num_gradient_steps gradient updates
+        for ith_gradient_update in range(self.num_gradient_steps):
 
-        # minimize loss
-        self.optimizer.zero_grad()
-        loss.backward()
-        for param in self.online_model.parameters(): param.grad.clamp_(-1,1)
-        self.optimizer.step()
+            # sample a batch from ReplayBuffer
+            sample = self.replayBuffer.sample(self.batchSize)
+            states, actions, rewards, nextStates, dones, indices, sampleWeights = self._split_sample(sample)
 
-        return loss.item()
+            # compute the loss
+            loss = self._compute_loss_n_updateBuffer(states, actions, rewards, nextStates, dones, indices, sampleWeights)
+
+            # minimize loss
+            self.optimizer.zero_grad()
+            loss.backward()
+            for param in self.online_model.parameters(): param.grad.clamp_(-1,1)
+            self.optimizer.step()
+
+            total_loss += loss.item()
+
+        return total_loss
 
 
     def _split_sample(self, sample):
@@ -348,7 +372,7 @@ class DQN:
     def _take_steps(self, action, render=False):
         # also handles the frame skipping and rendering for evaluation
 
-        discountedReward = 0 # the reward the model will see
+        accumulatedReward = 0 # the reward the model will see
         sumReward = 0 # to keep track of the total reward in the episode
         stepsTaken = 0 # to keep track of the total steps in the episode
 
@@ -362,7 +386,7 @@ class DQN:
 
             if render: self.env.render()
 
-            discountedReward += reward * self.gamma**skipped_step
+            accumulatedReward += reward # reward * self.gamma**skipped_step
             sumReward += reward
             stepsTaken += 1
 
@@ -379,7 +403,7 @@ class DQN:
         # compute the next state 
         nextState = self.make_state(observationList, infoList)
 
-        return nextState, discountedReward, sumReward, done, stepsTaken
+        return nextState, accumulatedReward, sumReward, done, stepsTaken
 
 
     def _initBookKeeping(self):
