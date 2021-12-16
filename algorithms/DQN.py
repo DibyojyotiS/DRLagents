@@ -50,7 +50,7 @@ class DQN:
 
         ## training necessities
         
-        model: The deep network to be trained.
+        model: The deep network to be trained. It maps states to the action-values.
         
         env: a gym env, that behaves similar to standard gym environments. Currently tested on env like cartpole.
 
