@@ -50,8 +50,8 @@ evalExplortionStrategy = greedyAction(duellingQnetwork)
 
 
 ## choose wether prioritized replay buffer or uniform sampling replay buffer or implement your own
-replayBuffer = ExperienceReplayBuffer(bufferSize=4096) # uniform sampling, windowed memory
-# replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=4096, alpha=0.6, beta=0.2, beta_rate=0.005, bufferType='replace-min') # prioritized sampling
+replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # uniform sampling, windowed memory
+# replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, alpha=0.6, beta=0.2, beta_rate=0.005, bufferType='replace-min') # prioritized sampling
 
 
 # define the training strategy DQN in our example
