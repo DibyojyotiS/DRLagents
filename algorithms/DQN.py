@@ -223,7 +223,12 @@ class DQN:
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    
         
-        return self.trainRewards, self.steps, self.loss, self.wallTime
+        return {
+            'trainRewards': self.trainRewards, 
+            'episodeSteps': self.episodeSteps, 
+            'loss': self.loss, 
+            'wallTime': self.wallTime
+        }
 
 
     def evaluate(self, evalExplortionStrategy:Strategy, EvalEpisodes=1, render=False):
@@ -408,14 +413,14 @@ class DQN:
 
     def _initBookKeeping(self):
         self.trainRewards = []
-        self.steps = []
+        self.episodeSteps = []
         self.loss = []
         self.wallTime = []
 
 
     def _performBookKeeping(self, trainReward, steps, totalLoss, timeElasped):
         self.trainRewards.append(trainReward)
-        self.steps.append(steps)
+        self.episodeSteps.append(steps)
         self.loss.append(totalLoss)
         self.wallTime.append(timeElasped)   
 
