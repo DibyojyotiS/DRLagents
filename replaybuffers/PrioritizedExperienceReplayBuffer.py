@@ -17,6 +17,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         stored as a windowed memory - the oldest expereicence is deleted 
         to make room for new. Or as a 'replace-min' pool where the experiece 
         with the least priority is deleted instead.
+
+        NOTE: sampling and update have TC of O( batchSize*log2(bufferSize) )
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
