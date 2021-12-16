@@ -20,7 +20,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
-                bufferType='circular', beta_schedule=None, numpy_parallelized=False):
+                bufferType='replace-min', beta_schedule=None, numpy_parallelized=False):
         """
         alpha: interpolates from uniform sampling (alpha = 0) to full prioritized sampling (alpha = 1).
 
