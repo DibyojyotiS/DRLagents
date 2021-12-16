@@ -54,7 +54,7 @@ DQNagent = DQN(Qnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 
 
 
 # train the model
-trainRewards, steps, trainloss, wallTime = DQNagent.trainAgent()
+trainHistory = DQNagent.trainAgent()
 
 
 # evaluate the model
@@ -62,8 +62,8 @@ evalRewards = DQNagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=T
 
 
 # plots the training rewards v/s episodes
-averaged_rewards = movingAverage(trainRewards)
-plt.plot([*range(len(trainRewards))], averaged_rewards, label="train rewards")
+averaged_rewards = movingAverage(trainHistory['trainRewards'])
+plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
 plt.xlabel('episode')
 plt.ylabel('reward')
 plt.legend()

@@ -49,22 +49,22 @@ replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # for uniform sampling
 
 
 # define the training strategy DQN in our example
-DQNagent = DDQN(Qnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 64, 
+DDQNagent = DDQN(Qnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 64, 
                 MaxTrainEpisodes=500, skipSteps=0, polyak_average=True, device=device)
                 # might want to do MaxTrainEpisodes=250 for prioritized buffer
 
 
 # train the model
-trainRewards, steps, trainloss, wallTime = DQNagent.trainAgent()
+trainHistory = DDQNagent.trainAgent()
 
 
 # evaluate the model
-evalRewards = DQNagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=True)
+evalRewards = DDQNagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=True)
 
 
 # plots the training rewards v/s episodes
-averaged_rewards = movingAverage(trainRewards)
-plt.plot([*range(len(trainRewards))], averaged_rewards, label="train rewards")
+averaged_rewards = movingAverage(trainHistory['trainRewards'])
+plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
 plt.xlabel('episode')
 plt.ylabel('reward')
 plt.legend()
