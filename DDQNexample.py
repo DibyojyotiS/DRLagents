@@ -45,12 +45,13 @@ evalExplortionStrategy = greedyAction(Qnetwork)
 
 ## choose wether prioritized replay buffer or uniform sampling replay buffer or implement your own
 replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # for uniform sampling
-# replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, alpha=0.2, beta=0.2, beta_rate=0.002) # for prioritized sampl..
+# replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, alpha=0.6, beta=0.2, beta_rate=0.002) # for prioritized sampl..
 
 
 # define the training strategy DQN in our example
 DQNagent = DDQN(Qnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 64, 
                 MaxTrainEpisodes=500, skipSteps=0, polyak_average=True, device=device)
+                # might want to do MaxTrainEpisodes=250 for prioritized buffer
 
 
 # train the model
