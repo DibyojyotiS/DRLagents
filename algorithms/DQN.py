@@ -375,7 +375,8 @@ class DQN:
 
 
     def _take_steps(self, action, render=False):
-        # also handles the frame skipping and rendering for evaluation
+        """ interacts with the environment and handles the frame skipping 
+            and also supports rendering for evaluation """
 
         accumulatedReward = 0 # the reward the model will see
         sumReward = 0 # to keep track of the total reward in the episode
