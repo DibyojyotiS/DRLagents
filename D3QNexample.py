@@ -55,7 +55,7 @@ replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # uniform sampling, wind
 
 
 # define the training strategy DQN in our example
-D3QNagent = DDQN(duellingQnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 64,
+D3QNagent = DDQN(env, duellingQnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64,
                 MaxTrainEpisodes=250, skipSteps=1, device=device, polyak_average=True, update_freq=5)
 
 

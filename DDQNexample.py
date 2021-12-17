@@ -49,7 +49,7 @@ replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # for uniform sampling
 
 
 # define the training strategy DQN in our example
-DDQNagent = DDQN(Qnetwork, env, trainExplortionStrategy, optimizer, replayBuffer, 64, 
+DDQNagent = DDQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, 
                 MaxTrainEpisodes=500, skipSteps=0, polyak_average=True, device=device)
                 # might want to do MaxTrainEpisodes=250 for prioritized buffer
 
