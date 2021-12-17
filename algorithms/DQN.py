@@ -21,7 +21,7 @@ class DQN:
 
     def __init__(self, 
                 # training necessities
-                model:nn.Module, env:gym.Env, 
+                env:gym.Env, model:nn.Module,
                 trainExplortionStrategy: Strategy,
                 optimizer: optim.Optimizer,
                 replayBuffer: ReplayBuffer,
