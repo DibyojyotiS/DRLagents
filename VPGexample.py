@@ -16,7 +16,7 @@ env = gym.make('CartPole-v0')
 # pick a suitable device
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# create the value network
+# create the value network, i know duelling net is not required here but... :p
 class duellingDNN(nn.Module):
     def __init__(self, inDim, outDim, hDim, activation = F.relu):
         super(duellingDNN, self).__init__()
@@ -55,7 +55,7 @@ class net(nn.Module):
 
 # init necessities
 value_model = duellingDNN(inDim=4, outDim=1, hDim=[8,8], activation=F.relu).to(device)
-policy_model = duellingDNN(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
+policy_model = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
 policyOptimizer = optim.Adam(policy_model.parameters(), lr=0.01)
 valueOptimizer = optim.Adam(value_model.parameters(), lr=0.01)
 trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
