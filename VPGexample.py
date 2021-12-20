@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from torch import nn, optim
 
 from agents import VPG
-from explorationStrategies import epsilonGreedyAction, greedyAction, softMaxAction
+from explorationStrategies import greedyAction, softMaxAction
 from utils import movingAverage
 
 # make a gym environment
@@ -58,13 +58,16 @@ class net(nn.Module):
 value_model = duellingDNN(inDim=4, outDim=1, hDim=[8,8], activation=F.relu).to(device)
 policy_model = duellingDNN(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
 policyOptimizer = optim.Adam(policy_model.parameters(), lr=0.01)
-valueOptimizer = optim.Adam(value_model.parameters(), lr=0.005)
+valueOptimizer = optim.Adam(value_model.parameters(), lr=0.01)
 trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
 evalExplortionStrategy = greedyAction(policy_model)
 
 VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, policyOptimizer, 
                 valueOptimizer, gamma=0.99, skipSteps=1, MaxTrainEpisodes=500, device=device)
 trainHistory = VPGagent.trainAgent()
+
+# render
+VPGagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=True)
 
 # plots the training rewards v/s episodes
 averaged_rewards = movingAverage(trainHistory['trainRewards'])

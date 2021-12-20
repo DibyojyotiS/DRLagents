@@ -39,6 +39,8 @@ class VPG:
         trajectory_seg_length: if not None then the original trajectory is broken up into 
                                 non-overlapping segments and each segment is treated as a 
                                 trajectory. The segment length is <= trajectory_seg_length.
+                                But note that the returns maynot be accurate. It is preferable
+                                to keep this as None or as large as possible.
 
         # NOTE: send log-probablities!!! """
 
@@ -73,20 +75,27 @@ class VPG:
         """ The main function to train the policy model """
         
         timeStart = perf_counter()
+
         for episode in range(self.MaxTrainEpisodes):
-            # get the trajectory
-            trajectory, totalReward, total_steps = self._genetate_trajectory()
-            # optimize models
-            policyloss, valueloss = self._optimizeAgent(trajectory)
+
+            # get the trajectory segments & optimize models
+            # trajectory, totalReward, total_steps = self._genetate_trajectory()
+            for output_tupple in self._genetate_trajectory():
+                trajectory, totalReward, total_steps = output_tupple
+                policyloss, valueloss = self._optimizeAgent(trajectory)
+
             # do book-keeping
             self._performBookKeeping(totalReward, total_steps, policyloss, valueloss, perf_counter()-timeStart)
+
             # show progress output
             if episode % self.printFreq == 0:
                 print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
+
             # early breaking
             if totalReward >= self.breakAtReward:
                 print(f'stopping at episode {episode}')
                 break
+
         # print the last episode if not already printed
         if episode % self.printFreq != 0:
             print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
@@ -113,7 +122,7 @@ class VPG:
         entropies = trajectory['entropy']
 
         # baseline
-        values = self.value_model(trajectory['state'][:-1]).squeeze()
+        values = self.value_model(trajectory['state'][:-1]).squeeze(dim=-1)
 
         # compute policy-loss
         action_advantages = partial_returns - values.detach()
@@ -128,7 +137,7 @@ class VPG:
 
         # grad-step value model
         valueLoss = self._value_model_grad_step(values, partial_returns)
-        for value_step in range(1, self.value_steps):
+        for value_step in range(1, min(self.value_steps, values.shape[0])):
             values = self.value_model(trajectory['state'][:-1]).squeeze()
             valueLoss = self._value_model_grad_step(values, partial_returns)
 
@@ -155,6 +164,7 @@ class VPG:
         # user defines this func to make a state from a list of observations and infos
         state = self.make_state([observation for _ in range(self.skipSteps)], 
                                 [None for _ in range(self.skipSteps)])
+        
         while not done:
             # take the action and handle frame skipping
             state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
@@ -176,15 +186,18 @@ class VPG:
             if self.MaxStepsPerEpisode and total_steps >= self.MaxStepsPerEpisode: break
 
             # yeild turncated trajectory if self.trajectory_seg_length is not None
-            if self.trajectory_seg_length and total_appends%self.trajectory_seg_length:
+            if self.trajectory_seg_length and total_appends%self.trajectory_seg_length == 0:
                 trajectory['state'].append(state) # proxy for terminal state
                 trajectory = self._trajectory_to_tensor(trajectory)
-                trajectory = {'state':[], 'action':[], 'reward':[], 'log_prob':[], 'entropy':[]}
-    
-        trajectory['state'].append(state) # append the terminal state
-        # convert the trajectory to a tensor
-        trajectory = self._trajectory_to_tensor(trajectory)
-        return trajectory, total_reward, total_steps
+                yield trajectory, total_reward, total_steps
+                # reset the trajectory
+                trajectory = {k:[] for k in trajectory.keys()}
+
+        # finally when we are actually done
+        if len(trajectory['reward']) > 0:
+            trajectory['state'].append(state) # append the terminal state
+            trajectory = self._trajectory_to_tensor(trajectory)
+            yield trajectory, total_reward, total_steps
 
 
     def _compute_Gt(self, rewards:Union[list, torch.Tensor]):
@@ -238,7 +251,7 @@ class VPG:
 
 
     def _value_model_grad_step(self, values:Tensor, partial_returns:Tensor):
-        valueLoss = F.mse_loss(values, partial_returns)
+        valueLoss = F.mse_loss(values.squeeze(), partial_returns.squeeze())
         self.value_optimizer.zero_grad()
         valueLoss.backward()
         for param in self.value_model.parameters(): param.grad.clamp_(-1,1)
@@ -271,3 +284,51 @@ class VPG:
 
     def _to_tensor(self, data:'list[Tensor]', requires_grad = False):
         return torch.tensor(data, dtype=torch.float32, device=self.device, requires_grad=requires_grad)
+
+
+    def evaluate(self, evalExplortionStrategy:Strategy, EvalEpisodes=1, render=False):
+        """ Evaluate the model for EvalEpisodes number of episodes """
+
+        evalRewards = []
+
+        for evalEpisode in range(EvalEpisodes):
+
+            done = False
+            observation = self.env.reset()
+            info = None # no initial info from gym.Env.reset
+
+            # counters
+            steps = 0
+            totalReward = 0
+
+            # user defines this func to make a state from a list of observations and infos
+            state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
+
+            while not done:
+
+                state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
+
+                # take action
+                action = evalExplortionStrategy.select_action(state_tensor)
+
+                # repeat the action skipStep number of times
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action, render=render)
+
+                steps += stepsTaken
+                totalReward += sumReward
+
+                if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
+
+                # update state
+                state = nextState
+
+            # decay exploration strategy params
+            evalExplortionStrategy.decay()
+
+            # append total episode reward
+            evalRewards.append(totalReward)
+
+            # print
+            print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
+        
+        return evalRewards
