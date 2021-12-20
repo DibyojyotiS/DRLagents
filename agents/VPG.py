@@ -6,9 +6,10 @@ from typing import Union
 import gym
 import torch
 from explorationStrategies import Strategy
-from torch import nn
+from torch import Tensor, nn
 import torch.nn.functional as F
 from torch.optim.optimizer import Optimizer
+from collections import deque
 
 class VPG:
 
@@ -25,6 +26,7 @@ class VPG:
                 beta = 0.1,
                 MaxTrainEpisodes = 500,
                 MaxStepsPerEpisode = None,
+                trajectory_seg_length = None,
                 value_steps = 10,
 
                 # miscellaneous
@@ -33,6 +35,11 @@ class VPG:
                 printFreq = 50,
                 device= torch.device('cpu')) -> None:
         """ policy model maps the states to action log-probablities \n
+
+        trajectory_seg_length: if not None then the original trajectory is broken up into 
+                                non-overlapping segments and each segment is treated as a 
+                                trajectory. The segment length is <= trajectory_seg_length.
+
         # NOTE: send log-probablities!!! """
 
         # training necessities
@@ -49,6 +56,7 @@ class VPG:
         self.beta  = beta
         self.MaxTrainEpisodes = MaxTrainEpisodes
         self.MaxStepsPerEpisode = MaxStepsPerEpisode
+        self.trajectory_seg_length = trajectory_seg_length
         self.value_steps = value_steps
 
         # miscellaneous
@@ -71,7 +79,7 @@ class VPG:
             # optimize models
             policyloss, valueloss = self._optimizeAgent(trajectory)
             # do book-keeping
-            self._performBookKeeping(totalReward, total_steps, policyloss, valueloss, perf_counter()-timeStart())
+            self._performBookKeeping(totalReward, total_steps, policyloss, valueloss, perf_counter()-timeStart)
             # show progress output
             if episode % self.printFreq == 0:
                 print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
@@ -95,7 +103,7 @@ class VPG:
         }
 
 
-    def _optimizeAgent(self, trajectory:dict):
+    def _optimizeAgent(self, trajectory:'dict[str, Tensor]'):
         """ to optimize the agent """
         # compute the partial return at every step
         partial_returns = self._compute_Gt(trajectory['reward'])
@@ -105,15 +113,12 @@ class VPG:
         entropies = trajectory['entropy']
 
         # baseline
-        values = self.value_model(trajectory['state'])
+        values = self.value_model(trajectory['state'][:-1]).squeeze()
 
         # compute policy-loss
         action_advantages = partial_returns - values.detach()
         policyLoss = - (action_advantages*action_logprobs \
                             + self.beta*entropies).mean()
-
-        # compute value-loss
-        valueLoss = F.mse_loss(values, partial_returns)
 
         # grad-step policy model
         self.policy_optimizer.zero_grad()
@@ -122,13 +127,12 @@ class VPG:
         self.policy_optimizer.step()
 
         # grad-step value model
-        for value_step in range(self.value_steps):
-            self.value_optimizer.zero_grad()
-            valueLoss.backward()
-            for param in self.value_model.parameters(): param.grad.clamp_(-1,1)
-            self.value_optimizer.step()
+        valueLoss = self._value_model_grad_step(values, partial_returns)
+        for value_step in range(1, self.value_steps):
+            values = self.value_model(trajectory['state'][:-1]).squeeze()
+            valueLoss = self._value_model_grad_step(values, partial_returns)
 
-        return policyLoss.item(), valueLoss.item()
+        return policyLoss.item(), valueLoss
 
 
     def _genetate_trajectory(self):
@@ -138,10 +142,13 @@ class VPG:
         NOTE: the states also include the terminal state, making
                 its length 1 more than actions, rewards and 
                 partial returns """
+        
         trajectory = {'state':[], 'action':[], 'reward':[], 'log_prob':[], 'entropy':[]}
+
         # bookeeping counters
         total_reward = 0.0
         total_steps = 0
+        total_appends = 0 # track length of original trajectory
 
         done = False
         observation = self.env.reset()
@@ -152,7 +159,7 @@ class VPG:
             # take the action and handle frame skipping
             state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
             action, log_prob, entropy = self.trainExplortionStrategy.select_action(state_tensor, grad=True, logProb_n_entropy=True)
-            nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action.item())
+            nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
             # append to trajectory
             trajectory['state'].append(state)
             trajectory['action'].append(action)
@@ -162,12 +169,21 @@ class VPG:
             # update counters
             total_reward+=sumReward
             total_steps+=stepsTaken
+            total_appends+=1
             # update state
             state = nextState
-        # append the terminal state
-        trajectory['state'].append(state)
+            # break episode is self.MaxStepsPerEpisode is exceeded
+            if self.MaxStepsPerEpisode and total_steps >= self.MaxStepsPerEpisode: break
+
+            # yeild turncated trajectory if self.trajectory_seg_length is not None
+            if self.trajectory_seg_length and total_appends%self.trajectory_seg_length:
+                trajectory['state'].append(state) # proxy for terminal state
+                trajectory = self._trajectory_to_tensor(trajectory)
+                trajectory = {'state':[], 'action':[], 'reward':[], 'log_prob':[], 'entropy':[]}
+    
+        trajectory['state'].append(state) # append the terminal state
         # convert the trajectory to a tensor
-        trajectory = self._astensor(trajectory)
+        trajectory = self._trajectory_to_tensor(trajectory)
         return trajectory, total_reward, total_steps
 
 
@@ -184,7 +200,7 @@ class VPG:
         return partial_Gts
 
 
-    def _take_steps(self, action, render=False):
+    def _take_steps(self, action:Tensor, render=False):
         # also handles the frame skipping and rendering for evaluation
 
         accumulatedReward = 0 # the reward the model will see
@@ -221,6 +237,23 @@ class VPG:
         return nextState, accumulatedReward, sumReward, done, stepsTaken
 
 
+    def _value_model_grad_step(self, values:Tensor, partial_returns:Tensor):
+        valueLoss = F.mse_loss(values, partial_returns)
+        self.value_optimizer.zero_grad()
+        valueLoss.backward()
+        for param in self.value_model.parameters(): param.grad.clamp_(-1,1)
+        self.value_optimizer.step()
+        return valueLoss.item()
+
+
+    def _trajectory_to_tensor(self, trajectory:'dict[str, deque]'):
+        for k in ['state', 'reward', 'action']:
+            trajectory[k] = self._to_tensor(trajectory[k])
+        trajectory['log_prob'] = torch.cat(tuple(trajectory['log_prob']))
+        trajectory['entropy'] = torch.cat(tuple(trajectory['entropy']))
+        return trajectory
+
+
     def _initBookKeeping(self):
         self.trainRewards = []
         self.episodeSteps = []
@@ -234,10 +267,7 @@ class VPG:
         self.episodeSteps.append(steps)
         self.policylosses.append(policyloss)
         self.valuelosses.append(valueloss)
-        self.wallTime.append(timeElasped)   
+        self.wallTime.append(timeElasped)
 
-    
-    def _astensor(self, args:'dict[str, list]') -> 'dict[str, torch.Tensor]':
-        for k in args.keys():
-            args[k] = torch.tensor(args[k], dtype=torch.float32, device=self.device)
-        return args
+    def _to_tensor(self, data:'list[Tensor]', requires_grad = False):
+        return torch.tensor(data, dtype=torch.float32, device=self.device, requires_grad=requires_grad)

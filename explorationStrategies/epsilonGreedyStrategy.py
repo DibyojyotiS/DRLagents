@@ -61,13 +61,14 @@ class epsilonGreedyAction(Strategy):
 
         # if entropy and log-probablities are not required 
         if not logProb_n_entropy: return eGreedyAction
-
+        # compute action_scores if not done
+        if action_scores is None:
+            action_scores = self.model(state)
         # if model outputs action-Q-values, convert them to log-probs
         if not self.outputs_LogProbs:
             log_probs = F.log_softmax(action_scores, dim=-1)
         else:
             log_probs = action_scores
-
         # compute the entropy and return log-prob of selected action
         _entropy = entropy(log_probs)
 

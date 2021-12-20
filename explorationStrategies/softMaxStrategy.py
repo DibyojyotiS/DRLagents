@@ -52,7 +52,6 @@ class softMaxAction(Strategy):
                 outputs = self._softMaxActionUtil(state, logProb_n_entropy)
         else: # otherwise allow gradients
             outputs = self._softMaxActionUtil(state, logProb_n_entropy)   
-
         return outputs   
 
 
@@ -63,17 +62,17 @@ class softMaxAction(Strategy):
         if not self.outputs_LogProbs:
             probs = Categorical(F.softmax(action_scores/self.temperature, dim=-1))
         else:
-            probs = Categorical(action_scores)
+            probs = Categorical(torch.exp(action_scores))
         
-        softAction = probs.sample().view((*action_scores.shape[:-1],1))
+        softAction = probs.sample().view((-1,1))
         
         if not logProb_n_entropy: return softAction
 
         # compute entropy
-        _entropy = probs.entropy().view((*action_scores.shape[:-1],1))
-        log_prob = probs.log_prob(softAction).view((*action_scores.shape[:-1],1))
-        
-        return softAction, log_prob, _entropy
+        _entropy = probs.entropy().view((-1,1))
+        log_prob = probs.log_prob(softAction).view((-1,1))
+
+        return softAction, log_prob, _entropy #.view((*action_scores.shape[:-1],1))
 
 
     def decay(self):
@@ -81,12 +80,3 @@ class softMaxAction(Strategy):
         self.episode += 1
         self.temperature = self.final_temperature + \
                             (self.init_temperature-self.final_temperature)*np.exp(-1 * self.episode/self.decaySteps)
-
-
-    # def select_action(self, state:torch.Tensor):
-    #     """ computes the gumbel softmax from the Q-values extracted
-    #     by passing the state throught the model """
-    #     with torch.no_grad():
-    #         Probs = F.softmax(self.model(state)/self.temperature, dim=-1)
-    #         softAction = Categorical(Probs).sample()
-    #     return softAction.view(-1,1)
