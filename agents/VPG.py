@@ -13,6 +13,13 @@ from torch.optim.optimizer import Optimizer
 
 
 class VPG:
+    ''' ## Vanila Policy Gradient with Baseline
+
+    The baseline used is the state-value function.
+    The value is substracted from the return at any 
+    time step giving the action advantage. 
+    Entropy is also added to the VPG loss after 
+    being scaled by a factor of beta. '''
 
     def __init__(self, 
                 # training necessities
