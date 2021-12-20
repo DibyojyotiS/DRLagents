@@ -1,26 +1,31 @@
 # Reinforce with baseline (VPG) is implemented here 
 # This particular version also uses entropy in the policy loss
 
+from time import perf_counter
 from typing import Union
 import gym
 import torch
 from explorationStrategies import Strategy
-from torch import nn, optim
+from torch import nn
+import torch.nn.functional as F
+from torch.optim.optimizer import Optimizer
 
-class Reinforce:
+class VPG:
 
     def __init__(self, 
                 # training necessities
                 env:gym.Env, policy_model: nn.Module, value_model:nn.Module,
                 trainExplortionStrategy: Strategy,
-                policy_optimizer: optim.Optimizer, 
-                value_optimizer: optim.Optimizer, 
+                policy_optimizer: Optimizer, 
+                value_optimizer: Optimizer, 
 
                 # optional training necessities
                 make_state = lambda listOfObs, listOfInfos: listOfObs[-1],
                 gamma = 0.8,
+                beta = 0.1,
                 MaxTrainEpisodes = 500,
                 MaxStepsPerEpisode = None,
+                value_steps = 10,
 
                 # miscellaneous
                 skipSteps = 0,
@@ -41,8 +46,10 @@ class Reinforce:
         # optional training necessities
         self.make_state = make_state
         self.gamma = gamma
+        self.beta  = beta
         self.MaxTrainEpisodes = MaxTrainEpisodes
         self.MaxStepsPerEpisode = MaxStepsPerEpisode
+        self.value_steps = value_steps
 
         # miscellaneous
         self.skipSteps = skipSteps
@@ -57,11 +64,35 @@ class Reinforce:
     def trainAgent(self):
         """ The main function to train the policy model """
         
+        timeStart = perf_counter()
         for episode in range(self.MaxTrainEpisodes):
             # get the trajectory
-            trajectory, total_reward, total_steps = self._genetate_trajectory()
+            trajectory, totalReward, total_steps = self._genetate_trajectory()
             # optimize models
-            self._optimizeAgent(trajectory)
+            policyloss, valueloss = self._optimizeAgent(trajectory)
+            # do book-keeping
+            self._performBookKeeping(totalReward, total_steps, policyloss, valueloss, perf_counter()-timeStart())
+            # show progress output
+            if episode % self.printFreq == 0:
+                print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
+            # early breaking
+            if totalReward >= self.breakAtReward:
+                print(f'stopping at episode {episode}')
+                break
+        # print the last episode if not already printed
+        if episode % self.printFreq != 0:
+            print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
+
+        # just cuirious to know the total time spent...
+        print("total time elasped:", perf_counter() - timeStart,'s')    
+        
+        return {
+            'trainRewards': self.trainRewards, 
+            'episodeSteps': self.episodeSteps, 
+            'policylosses': self.policylosses, 
+            'valuelosses': self.valuelosses,
+            'wallTime': self.wallTime
+        }
 
 
     def _optimizeAgent(self, trajectory:dict):
@@ -70,15 +101,34 @@ class Reinforce:
         partial_returns = self._compute_Gt(trajectory['reward'])
 
         # action_probablities
-        log_probs = self.policy_model(trajectory['state'])
-        actions = trajectory['action'].view(-1,1)
-        action_logprobs = log_probs.gather(-1, actions).squeeze()
-        # entropies = entropy(actions)
+        action_logprobs = trajectory['log_prob']
+        entropies = trajectory['entropy']
+
+        # baseline
+        values = self.value_model(trajectory['state'])
+
+        # compute policy-loss
+        action_advantages = partial_returns - values.detach()
+        policyLoss = - (action_advantages*action_logprobs \
+                            + self.beta*entropies).mean()
+
+        # compute value-loss
+        valueLoss = F.mse_loss(values, partial_returns)
 
         # grad-step policy model
-        policyloss = - partial_returns*action_logprobs
-        self._grad_step_policy_model(policyloss)
+        self.policy_optimizer.zero_grad()
+        policyLoss.backward()
+        for param in self.policy_model.parameters(): param.grad.clamp_(-1,1)
+        self.policy_optimizer.step()
 
+        # grad-step value model
+        for value_step in range(self.value_steps):
+            self.value_optimizer.zero_grad()
+            valueLoss.backward()
+            for param in self.value_model.parameters(): param.grad.clamp_(-1,1)
+            self.value_optimizer.step()
+
+        return policyLoss.item(), valueLoss.item()
 
 
     def _genetate_trajectory(self):
@@ -88,7 +138,7 @@ class Reinforce:
         NOTE: the states also include the terminal state, making
                 its length 1 more than actions, rewards and 
                 partial returns """
-        trajectory = {'state':[], 'action':[], 'reward':[]}
+        trajectory = {'state':[], 'action':[], 'reward':[], 'log_prob':[], 'entropy':[]}
         # bookeeping counters
         total_reward = 0.0
         total_steps = 0
@@ -101,11 +151,13 @@ class Reinforce:
         while not done:
             # take the action and handle frame skipping
             state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
-            action = self.trainExplortionStrategy.select_action(state_tensor).item() # why not return the log probs itself?
-            nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
+            action, log_prob, entropy = self.trainExplortionStrategy.select_action(state_tensor, grad=True, logProb_n_entropy=True)
+            nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action.item())
             # append to trajectory
             trajectory['state'].append(state)
             trajectory['action'].append(action)
+            trajectory['log_prob'].append(log_prob) # log-probabliy of taken action
+            trajectory['entropy'].append(entropy) # entropy of action probablities
             trajectory['reward'].append(accumulatedReward)
             # update counters
             total_reward+=sumReward
@@ -168,32 +220,20 @@ class Reinforce:
 
         return nextState, accumulatedReward, sumReward, done, stepsTaken
 
-    
-    def _grad_step_policy_model(self, policyLoss:torch.tensor):
-        self.policy_optimizer.zero_grad()
-        policyLoss.backward()
-        for param in self.policy_model.parameters(): param.grad.clamp_(-1,1)
-        self.policy_optimizer.step()
-
-
-    def _grad_step_value_model(self, valueLoss):
-        self.value_optimizer.zero_grad()
-        valueLoss.backward()
-        for param in self.value_model.parameters(): param.grad.clamp_(-1,1)
-        self.value_optimizer.step()
-
 
     def _initBookKeeping(self):
         self.trainRewards = []
         self.episodeSteps = []
-        self.loss = []
+        self.policylosses = []
+        self.valuelosses = []
         self.wallTime = []
 
 
-    def _performBookKeeping(self, trainReward, steps, totalLoss, timeElasped):
+    def _performBookKeeping(self, trainReward, steps, policyloss, valueloss, timeElasped):
         self.trainRewards.append(trainReward)
         self.episodeSteps.append(steps)
-        self.loss.append(totalLoss)
+        self.policylosses.append(policyloss)
+        self.valuelosses.append(valueloss)
         self.wallTime.append(timeElasped)   
 
     
