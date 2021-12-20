@@ -5,7 +5,7 @@ import gym
 import torch
 from torch import nn
 from torch import optim
-from algorithms.helper_funcs import polyak_update
+from agents.helper_funcs import polyak_update
 
 from explorationStrategies import Strategy
 from replaybuffers import ReplayBuffer

@@ -1,19 +1,54 @@
+from typing import Union
+
 import torch
-from torch import nn
+import torch.nn.functional as F
+from torch import Tensor, nn
 
 from explorationStrategies import Strategy
+from explorationStrategies.helper_funcs import entropy
+
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in
 # training strategies like the DQN, or alternatively the same model that would be trained can be sent here
 class greedyAction(Strategy):
+    ''' selects an action greedly. The greedy strategy is 
+    usually used in evaluation. '''
 
-    def __init__(self, model:nn.Module) -> None:
+    def __init__(self, model: nn.Module, outputs_LogProbs=False) -> None:
         self.model = model
+        self.outputs_LogProbs = outputs_LogProbs
 
-    def select_action(self, state:torch.tensor):
-        ''' preferablely a single state '''
-        with torch.no_grad():
-            Qpred = self.model(state)
-            greedyAction = torch.argmax(Qpred, dim=-1, keepdim=True)
-        return greedyAction
+
+    def select_action(self, state: torch.Tensor, 
+                        logProb_n_entropy=False, grad=False) \
+                            -> Union[Tensor, 'tuple[Tensor, Tensor, Tensor]']:
+        
+        if not grad: # block gradients (do not store computation graph)
+            with torch.no_grad():
+                outputs = self._greedyActionUtil(state, logProb_n_entropy)
+        else: # otherwise allow gradients
+            outputs = self._greedyActionUtil(state, logProb_n_entropy)
+
+        return outputs
+    
+    def _greedyActionUtil(self, state:torch.Tensor, logProb_n_entropy:bool):
+            action_scores = self.model(state) # Q-values or action-log-probablities
+            greedyAction = torch.argmax(action_scores, dim=-1, keepdim=True)
+
+            if not logProb_n_entropy: return greedyAction
+
+            # compute log-probs and entropy
+            if not self.outputs_LogProbs:
+                # convert Q-values to log probablitites
+                log_probs = F.log_softmax(action_scores, dim=-1)
+            else:
+                log_probs = action_scores
+
+            _entropy = entropy(log_probs)
+            
+            return greedyAction, log_probs.gather(-1, greedyAction), _entropy
+
+
+
+
 

@@ -1,5 +1,5 @@
 import torch
-from algorithms.DQN import DQN
+from agents.DQN import DQN
 
 
 class DDQN(DQN):

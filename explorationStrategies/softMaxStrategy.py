@@ -1,31 +1,79 @@
+from typing import Union
 import numpy as np
 import torch
+from torch.distributions.categorical import Categorical
 import torch.nn.functional as F
-from torch import nn
+from torch import Tensor, nn
 
 from explorationStrategies import Strategy
+from explorationStrategies.helper_funcs.helper_funcs import entropy
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in
 # training strategies like the DQN, or alternatively the same model that would be trained can be sent here
 class softMaxAction(Strategy):
 
-    def __init__(self, model:nn.Module, temperature=1, finaltemperature=None, decaySteps=None) -> None:
-        '''decays temperature to 1/e of initial - final in decaySteps if not None'''
+    def __init__(self, model: nn.Module, temperature=1, finaltemperature=None, 
+                    decaySteps=None, outputs_LogProbs=False) -> None:
+        ''' decays temperature by 1/e of initial-final in decaySteps if not None 
+
+        temperature: the initial temperature for gumbel softmax
+
+        finaltemperature: the asymptotically final value of temperature
+
+        decaySteps: episodes in which temperaure decays to 1/e the way to final
+                    If decaySteps=None, then temperature will not be decayed.
+
+        outputs_LogProbs: whether the model returns log-probablities of actions
+
+        NOTE: for outputs_LogProbs = True the action will be sampled from the 
+                distribution returned by the model. 
+                (corresponds to temperature=1, decaySteps=None)
+        '''
         self.model = model
         self.temperature = temperature
         self.init_temperature = temperature
         self.final_temperature = finaltemperature
         self.decaySteps = decaySteps
+        self.outputs_LogProbs = outputs_LogProbs
 
         self.episode = 0
 
+        if outputs_LogProbs and decaySteps is not None:
+            print('''Warning: for outputs_LogProbs = True the action will be sampled from the 
+                distribution returned by the model without appying the 
+                gumbel-softmax. (corresponds to temperature=1, decaySteps=None)''')
 
-    def select_action(self, state:torch.tensor):
 
-        with torch.no_grad():
-            Probs = F.softmax(self.model(state)/self.temperature, dim=-1)
-            softAction = torch.distributions.Categorical(Probs).sample()
-        return softAction.view(-1,1)
+    def select_action(self, state: Tensor, 
+                        logProb_n_entropy=False, grad=False) \
+                            -> Union[Tensor, 'tuple[Tensor, Tensor, Tensor]']:
+        if not grad: # block gradients (do not store computation graph)
+            with torch.no_grad():
+                outputs = self._softMaxActionUtil(state, logProb_n_entropy)
+        else: # otherwise allow gradients
+            outputs = self._softMaxActionUtil(state, logProb_n_entropy)   
+
+        return outputs   
+
+
+    def _softMaxActionUtil(self, state:Tensor, logProb_n_entropy:bool):
+
+        # compute the action-probablities
+        action_scores = self.model(state)
+        if not self.outputs_LogProbs:
+            probs = Categorical(F.softmax(action_scores/self.temperature, dim=-1))
+        else:
+            probs = Categorical(action_scores)
+        
+        softAction = probs.sample().view((*action_scores.shape[:-1],1))
+        
+        if not logProb_n_entropy: return softAction
+
+        # compute entropy
+        _entropy = probs.entropy().view((*action_scores.shape[:-1],1))
+        log_prob = probs.log_prob(softAction).view((*action_scores.shape[:-1],1))
+        
+        return softAction, log_prob, _entropy
 
 
     def decay(self):
@@ -33,3 +81,12 @@ class softMaxAction(Strategy):
         self.episode += 1
         self.temperature = self.final_temperature + \
                             (self.init_temperature-self.final_temperature)*np.exp(-1 * self.episode/self.decaySteps)
+
+
+    # def select_action(self, state:torch.Tensor):
+    #     """ computes the gumbel softmax from the Q-values extracted
+    #     by passing the state throught the model """
+    #     with torch.no_grad():
+    #         Probs = F.softmax(self.model(state)/self.temperature, dim=-1)
+    #         softAction = Categorical(Probs).sample()
+    #     return softAction.view(-1,1)

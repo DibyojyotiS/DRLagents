@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
-from algorithms import DDQN
+from agents import DDQN
 from replaybuffers import ExperienceReplayBuffer, PrioritizedExperienceRelpayBuffer
 from explorationStrategies import epsilonGreedyAction
 from explorationStrategies.greedyStrategy import greedyAction
