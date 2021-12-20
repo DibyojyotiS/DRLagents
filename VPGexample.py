@@ -10,6 +10,7 @@ from agents import VPG
 from explorationStrategies import greedyAction, softMaxAction
 from utils import movingAverage
 
+
 # make a gym environment
 env = gym.make('CartPole-v0')
 
