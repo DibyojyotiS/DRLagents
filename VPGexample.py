@@ -63,7 +63,7 @@ trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
 evalExplortionStrategy = greedyAction(policy_model)
 
 VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, policyOptimizer, 
-                valueOptimizer, gamma=0.99, skipSteps=1, MaxTrainEpisodes=200, device=device)
+                valueOptimizer, gamma=0.99, skipSteps=1, MaxTrainEpisodes=400, device=device)
 trainHistory = VPGagent.trainAgent()
 
 # render
