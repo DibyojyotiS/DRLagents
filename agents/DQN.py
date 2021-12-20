@@ -375,8 +375,25 @@ class DQN:
 
 
     def _take_steps(self, action, render=False):
-        """ interacts with the environment and handles the frame skipping 
-            and also supports rendering for evaluation """
+        """ This executes the action, and handels frame skipping.
+        In frame skipping the same action is repeated and the observations
+        and infos are are stored in a list. The next state (where the agent 
+        lands) is computed using the make_state upon the list of observations
+        and infos.
+        
+        If the episode terminates within a frame skip then the list is padded 
+        using the last observed observation and info to maintain the same input
+        size. 
+
+        Also handles rendering during evaluation.
+        
+        this function returns:
+        nextState: the next state
+        accumulatedReward: an accumulation of the rewards (currently sum)
+        sumReward: the sum of the rewards seen 
+        done:bool, whether the episode has ended 
+        stepsTaken: the number of frames actually skipped - usefull when
+                    the episode ends during a frame-skip """
 
         accumulatedReward = 0 # the reward the model will see
         sumReward = 0 # to keep track of the total reward in the episode

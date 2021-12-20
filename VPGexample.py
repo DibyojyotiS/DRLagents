@@ -1,5 +1,4 @@
-# Tutorial for both DQN and DQN with Prioritized Experience Replay
-# for prioritized replay version uncomment line 48
+# Tutorial for VPG
 
 import gym
 import matplotlib.pyplot as plt
