@@ -2,7 +2,7 @@ import random
 
 import torch
 
-from replaybuffers import ReplayBuffer
+from . import ReplayBuffer
 
 
 class ExperienceReplayBuffer(ReplayBuffer):

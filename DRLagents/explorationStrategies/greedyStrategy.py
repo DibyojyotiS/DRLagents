@@ -4,8 +4,8 @@ import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from explorationStrategies import Strategy
-from explorationStrategies.helper_funcs import entropy
+from .Strategy import Strategy
+from .helper_funcs import entropy
 
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in

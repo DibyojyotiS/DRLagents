@@ -6,11 +6,8 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from torch import nn, optim
+from DRLagents import *
 
-from agents import DQN
-from replaybuffers import ExperienceReplayBuffer, PrioritizedExperienceRelpayBuffer
-from explorationStrategies import epsilonGreedyAction, greedyAction
-from utils import movingAverage
 
 # make a gym environment
 env = gym.make('CartPole-v0')

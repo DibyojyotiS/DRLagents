@@ -5,8 +5,8 @@ from torch.distributions.categorical import Categorical
 import torch.nn.functional as F
 from torch import Tensor, nn
 
-from explorationStrategies import Strategy
-from explorationStrategies.helper_funcs.helper_funcs import entropy
+from .Strategy import Strategy
+from .helper_funcs.helper_funcs import entropy
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in
 # training strategies like the DQN, or alternatively the same model that would be trained can be sent here

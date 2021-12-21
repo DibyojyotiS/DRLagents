@@ -7,7 +7,7 @@ from typing import Union
 import gym
 import torch
 import torch.nn.functional as F
-from explorationStrategies import Strategy
+from DRLagents.explorationStrategies import Strategy
 from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
 

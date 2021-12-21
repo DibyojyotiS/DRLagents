@@ -6,7 +6,7 @@ import numpy as np
 
 import torch
 
-from replaybuffers import ReplayBuffer
+from . import ReplayBuffer
 
 
 class PrioritizedExperienceRelpayBuffer(ReplayBuffer):

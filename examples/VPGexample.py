@@ -5,10 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn.functional as F
 from torch import nn, optim
-
-from agents import VPG
-from explorationStrategies import greedyAction, softMaxAction
-from utils import movingAverage
+from DRLagents import *
 
 
 # make a gym environment

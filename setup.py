@@ -6,6 +6,7 @@ setup(
     description= 'A toolkit to train DeepRL-agents',
     author= 'Dibyojyoti Sinha',
     author_email= 'dibyo@iitk.ac.in',
-    packages=['agents', 'explorationStrategies', 'replaybuffers', 'utils'],
+    packages= ['DRLagents'],
+    py_modules=['agents', 'explorationStrategies', 'replaybuffers', 'utils'],
     install_requires=['numpy', 'gym', 'torch']
 )

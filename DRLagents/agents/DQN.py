@@ -5,11 +5,11 @@ import gym
 import torch
 from torch import nn
 from torch import optim
-from agents.helper_funcs import polyak_update
+from .helper_funcs import polyak_update
 
-from explorationStrategies import Strategy
-from replaybuffers import ReplayBuffer
-from utils.weightedLosses import weighted_MSEloss
+from DRLagents.explorationStrategies import Strategy
+from DRLagents.replaybuffers import ReplayBuffer
+from DRLagents.utils.weightedLosses import weighted_MSEloss
 
 # things to discuss about skipping frames
 # 1. how to accumulate the rewards in the skipped frames? -> currently a cumulative (summed) reward
