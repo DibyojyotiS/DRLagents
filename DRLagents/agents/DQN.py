@@ -144,7 +144,7 @@ class DQN:
         self.optimize_at_end = optimize_kth_step==-1
         
 
-    def trainAgent(self):
+    def trainAgent(self, render=False):
         """The main function to train the model"""
         
         timeStart = perf_counter()
@@ -154,6 +154,9 @@ class DQN:
             done = False
             observation = self.env.reset()
             info = None # no initial info from gym.Env.reset
+    
+            # render
+            if render: self.env.render()
 
             # counters
             steps = 0
@@ -188,6 +191,9 @@ class DQN:
 
                 # update state
                 state = nextState
+
+                # render
+                if render: self.env.render()
 
             # if required optimize at the episode end
             if self.optimize_at_end:
@@ -250,13 +256,16 @@ class DQN:
             state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
             state = torch.tensor(state, dtype=torch.float32, device=self.device)
 
+            # render
+            if render: self.env.render()
+
             while not done:
 
                 # take action
                 action = evalExplortionStrategy.select_action(state)
 
                 # repeat the action skipStep number of times
-                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action, render=render)
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
                 nextState, action, accumulatedReward, done = self._astensor(nextState, action, accumulatedReward, done)
 
                 steps += stepsTaken
@@ -266,6 +275,9 @@ class DQN:
 
                 # update state
                 state = nextState
+
+                # render
+                if render: self.env.render()
 
             # decay exploration strategy params
             evalExplortionStrategy.decay()
@@ -374,7 +386,7 @@ class DQN:
         return states, actions, rewards, nextStates, dones, indices, sampleWeights
 
 
-    def _take_steps(self, action, render=False):
+    def _take_steps(self, action):
         """ This executes the action, and handels frame skipping.
         In frame skipping the same action is repeated and the observations
         and infos are are stored in a list. The next state (where the agent 
@@ -384,8 +396,6 @@ class DQN:
         If the episode terminates within a frame skip then the list is padded 
         using the last observed observation and info to maintain the same input
         size. 
-
-        Also handles rendering during evaluation.
         
         this function returns:
         nextState: the next state
@@ -406,8 +416,6 @@ class DQN:
 
             # repeate the action
             nextObservation, reward, done, info = self.env.step(action.item())
-
-            if render: self.env.render()
 
             accumulatedReward += reward # reward * self.gamma**skipped_step
             sumReward += reward

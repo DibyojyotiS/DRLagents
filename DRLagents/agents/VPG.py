@@ -286,8 +286,6 @@ class VPG:
         using the last observed observation and info to maintain the same input
         size. 
 
-        Also handles rendering during evaluation.
-        
         this function returns:
         nextState: the next state
         accumulatedReward: an accumulation of the rewards (currently sum)
@@ -307,9 +305,6 @@ class VPG:
 
             # repeate the action
             nextObservation, reward, done, info = self.env.step(action.item())
-
-            if render: self.env.render()
-
             accumulatedReward += reward # reward * self.gamma**skipped_step
             sumReward += reward
             stepsTaken += 1
@@ -390,6 +385,9 @@ class VPG:
             # user defines this func to make a state from a list of observations and infos
             state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
 
+            # render
+            if render: self.env.render()
+
             while not done:
 
                 state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
@@ -407,6 +405,9 @@ class VPG:
 
                 # update state
                 state = nextState
+
+                # render
+                if render: self.env.render()
 
             # decay exploration strategy params
             evalExplortionStrategy.decay()

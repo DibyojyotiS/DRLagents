@@ -5,6 +5,7 @@ import random
 import numpy as np
 
 import torch
+from torch import Tensor
 
 from . import ReplayBuffer
 
@@ -73,8 +74,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self.beta = self.beta_schedule(0)
 
     
-    def store(self, state:torch.tensor, action:torch.tensor, 
-                reward:torch.tensor, nextState:torch.tensor, done:torch.tensor):
+    def store(self, state:Tensor, action:Tensor, 
+                reward:Tensor, nextState:Tensor, done:Tensor):
         
         # all should be tensors!!
         experienceTupple = [state, action, reward, nextState, done]
