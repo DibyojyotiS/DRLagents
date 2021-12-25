@@ -40,8 +40,9 @@ class ReplayBuffer:
 
     def _lazy_buffer_init(self, experience, tuppleDesc):
         """ inits the buffer as a dict with the keys as in _tuppleDesc and the values
-        as torch.empty tensor of length bufferSize and correct dimensions. The given experience
+        as torch.empty Tensors of length bufferSize and correct dimensions. The given experience
         is a list of tensors. And is used to infer the dimentions and the devices of the tensors.
+        NOTE: only to be used if the stuff to store has pre-determined shapes
         NOTE: Each element of the list experiece must be torch tensors 
         NOTE: requires_grad=False is assumed """
         return {x: torch.empty(size=(self.bufferSize, *experience[i].shape), 
