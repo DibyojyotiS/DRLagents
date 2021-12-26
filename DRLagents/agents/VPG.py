@@ -336,7 +336,6 @@ class VPG:
 
     def _value_model_grad_step(self, values:Tensor, partial_returns:Tensor):
         ''' compute loss and do single gradient step for value_model '''
-        statedtc0 = self.value_model.front.state_dict()
         valueLoss = F.mse_loss(values.squeeze(), partial_returns.squeeze())
         self.value_optimizer.zero_grad()
         valueLoss.backward()
