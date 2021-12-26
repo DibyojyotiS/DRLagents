@@ -7,6 +7,7 @@ from typing import Union
 import gym
 import torch
 import torch.nn.functional as F
+from DRLagents.agents.helper_funcs.helper_funcs import clip_grads
 from DRLagents.explorationStrategies import Strategy
 from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
@@ -191,7 +192,7 @@ class VPG:
         # grad-step policy model
         self.policy_optimizer.zero_grad()
         policyLoss.backward()
-        for param in self.policy_model.parameters(): param.grad.clamp_(-1,1)
+        clip_grads(self.policy_model)
         self.policy_optimizer.step()
 
         # grad-step value model
@@ -335,10 +336,11 @@ class VPG:
 
     def _value_model_grad_step(self, values:Tensor, partial_returns:Tensor):
         ''' compute loss and do single gradient step for value_model '''
+        statedtc0 = self.value_model.front.state_dict()
         valueLoss = F.mse_loss(values.squeeze(), partial_returns.squeeze())
         self.value_optimizer.zero_grad()
         valueLoss.backward()
-        for param in self.value_model.parameters(): param.grad.clamp_(-1,1)
+        clip_grads(self.value_model)
         self.value_optimizer.step()
         return valueLoss.item()
 

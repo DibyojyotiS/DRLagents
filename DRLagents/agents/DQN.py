@@ -5,6 +5,8 @@ import gym
 import torch
 from torch import nn
 from torch import optim
+
+from DRLagents.agents.helper_funcs.helper_funcs import clip_grads
 from .helper_funcs import polyak_update
 
 from DRLagents.explorationStrategies import Strategy
@@ -351,7 +353,7 @@ class DQN:
             # minimize loss
             self.optimizer.zero_grad()
             loss.backward()
-            for param in self.online_model.parameters(): param.grad.clamp_(-1,1)
+            clip_grads(self.online_model)
             self.optimizer.step()
 
             total_loss += loss.item()

@@ -12,3 +12,9 @@ def polyak_update(online_model:nn.Module, target_model:nn.Module, tau=0.1):
         target_model.load_state_dict(target_stateDict)
         # for paramOnline, paramTarget in zip(online_model.parameters(), target_model.parameters()):
         #     paramTarget.data = tau * paramOnline.data + (1 - tau) * paramTarget.data
+
+
+def clip_grads(model:nn.Module, _min=-1.0, _max=1.0):
+    for param in model.parameters():
+        if param.grad is None: continue
+        param.grad.clamp(_min, _max)
