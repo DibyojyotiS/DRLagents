@@ -216,7 +216,7 @@ class DQN:
 
             # show progress output
             if episode % self.printFreq == 0:
-                print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
+                print(f'episode: {episode} -> reward: {totalReward}, steps:{steps} time-elasped: {perf_counter()-timeStart:.2f}s')
 
             if totalReward >= self.breakAtReward:
                 print(f'stopping at episode {episode}')
@@ -224,7 +224,7 @@ class DQN:
 
         # print the last episode if not already printed
         if episode % self.printFreq != 0:
-            print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
+            print(f'episode: {episode} -> reward: {totalReward}, steps:{steps} time-elasped: {perf_counter()-timeStart:.2f}s')
 
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    

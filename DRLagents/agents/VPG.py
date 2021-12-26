@@ -128,7 +128,7 @@ class VPG:
         self._initBookKeeping()
 
 
-    def trainAgent(self):
+    def trainAgent(self, render=False):
         """ The main function to train the policy and value models """
         
         timeStart = perf_counter()
@@ -137,7 +137,7 @@ class VPG:
 
             # get the trajectory segments & optimize models
             # trajectory, totalReward, total_steps = self._genetate_trajectory()
-            for output_tupple in self._genetate_trajectory():
+            for output_tupple in self._genetate_trajectory(render):
                 trajectory, totalReward, total_steps = output_tupple
                 policyloss, valueloss, avgEntropy = self._optimizeAgent(trajectory)
 
@@ -147,7 +147,7 @@ class VPG:
 
             # show progress output
             if episode % self.printFreq == 0:
-                print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
+                print(f'episode: {episode} -> reward: {totalReward}, steps:{total_steps} time-elasped: {perf_counter()-timeStart:.2f}s')
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -156,7 +156,7 @@ class VPG:
 
         # print the last episode if not already printed
         if episode % self.printFreq != 0:
-            print(f'episode: {episode} -> reward: {totalReward} time-elasped: {perf_counter()-timeStart:.2f}s')
+            print(f'episode: {episode} -> reward: {totalReward}, steps:{total_steps} time-elasped: {perf_counter()-timeStart:.2f}s')
 
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    
@@ -203,7 +203,7 @@ class VPG:
         return policyLoss.item(), valueLoss, mean_entropy.item()
 
 
-    def _genetate_trajectory(self):
+    def _genetate_trajectory(self, render=False):
         """ 
         This is a generator function to generate trajectories
 
@@ -223,6 +223,10 @@ class VPG:
 
         done = False
         observation = self.env.reset()
+
+        # render
+        if render: self.env.render()
+
         # user defines this func to make a state from a list of observations and infos
         state = self.make_state([observation for _ in range(self.skipSteps)], 
                                 [None for _ in range(self.skipSteps)])
@@ -244,6 +248,10 @@ class VPG:
             total_appends+=1
             # update state
             state = nextState
+
+            # render
+            if render: self.env.render()
+
             # break episode is self.MaxStepsPerEpisode is exceeded
             if self.MaxStepsPerEpisode and total_steps >= self.MaxStepsPerEpisode: break
 
