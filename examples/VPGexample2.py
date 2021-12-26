@@ -54,9 +54,6 @@ class valueDNN(nn.Module):
         # because value model will be updated multiple times
         # for each update of policy model
         with torch.no_grad():
-            # set the existing gradients of the front model to zeros
-            # otherwise optimizer will update front as well
-            self.front.zero_grad()
             x = self.front(x)
         x = self.layer1(x)
         return x
