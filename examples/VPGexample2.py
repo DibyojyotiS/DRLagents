@@ -8,12 +8,6 @@ from torch import nn, optim
 from DRLagents import *
 
 
-# make a gym environment
-env = gym.make('CartPole-v0')
-
-# pick a suitable device
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 # the trunk of the net
 class frontDNN(nn.Module):
     def __init__(self, inDim:int, outDim:int, hDims:'list[int]', activation = F.relu) -> None:
@@ -58,28 +52,44 @@ class valueDNN(nn.Module):
         x = self.layer1(x)
         return x
 
-# create the net
-trunk = frontDNN(4, 8, [8]).to(device)
-value_model = valueDNN(8, trunk).to(device)
-policy_model = policyDNN(8, 2, trunk).to(device)
 
-# init necessities
-policyOptimizer = optim.Adam(policy_model.parameters(), lr=0.01)
-valueOptimizer = optim.Adam(value_model.parameters(), lr=0.01)
-trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
-evalExplortionStrategy = greedyAction(policy_model)
+def run_VPG_on_cartpole_V0(evalRender=False):
+    # make a gym environment
+    env = gym.make('CartPole-v0')
 
-VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, policyOptimizer, 
-                valueOptimizer, gamma=0.99, skipSteps=1, MaxTrainEpisodes=400, device=device)
-trainHistory = VPGagent.trainAgent()
+    # pick a suitable device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# render
-VPGagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=True)
+    # create the net
+    trunk = frontDNN(4, 8, [8]).to(device)
+    value_model = valueDNN(8, trunk).to(device)
+    policy_model = policyDNN(8, 2, trunk).to(device)
 
-# plots the training rewards v/s episodes
-averaged_rewards = movingAverage(trainHistory['trainRewards'])
-plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
-plt.xlabel('episode')
-plt.ylabel('reward')
-plt.legend()
-plt.show()
+    # init necessities
+    policyOptimizer = optim.Adam(policy_model.parameters(), lr=0.01)
+    valueOptimizer = optim.Adam(value_model.parameters(), lr=0.095)
+    trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
+    evalExplortionStrategy = greedyAction(policy_model)
+
+    VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, 
+                    policyOptimizer, valueOptimizer, gamma=0.99, skipSteps=1, 
+                    MaxTrainEpisodes=400, device=device)
+    trainHistory = VPGagent.trainAgent()
+
+    # evaluate
+    evalinfo = VPGagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=evalRender)
+
+    # close env
+    env.close()
+
+    return trainHistory, evalinfo
+
+if __name__ == "__main__":
+    trainHistory, _ = run_VPG_on_cartpole_V0(True)
+    # plots the training rewards v/s episodes
+    averaged_rewards = movingAverage(trainHistory['trainRewards'])
+    plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
+    plt.xlabel('episode')
+    plt.ylabel('reward')
+    plt.legend()
+    plt.show()

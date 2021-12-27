@@ -32,36 +32,45 @@ class net(nn.Module):
         t = self.outputlayer(t)
         return t
 
+# change buffertype to 'prioritized' for PER-buffer
+def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
+    # init necessities
+    Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
+    optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
+    trainExplortionStrategy = epsilonGreedyAction(Qnetwork, 0.5, 0.05, 100)
+    evalExplortionStrategy = greedyAction(Qnetwork)
 
-# init necessities
-Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
-optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
-trainExplortionStrategy = epsilonGreedyAction(Qnetwork, 0.5, 0.05, 100)
-evalExplortionStrategy = greedyAction(Qnetwork)
+    ## choose a replay buffer or implement your own
+    if buffertype == 'uniform':
+        MTE=500
+        replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # for uniform sampling 
+    elif buffertype == 'prioritized':
+        MTE=250
+        replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, 
+                            alpha=0.6, beta=0.2, beta_rate=0.002) # prioritized sampling
+        
+    # define the training strategy DQN in our example
+    DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, MaxTrainEpisodes=MTE, skipSteps=1, device=device)
+                    # might want to do MaxTrainEpisodes=250 for prioritized buffer
+
+    # train the model
+    trainHistory = DQNagent.trainAgent()
+
+    # evaluate the model
+    evalinfo = DQNagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=evalRender)
+
+    # close env
+    env.close()
+
+    return trainHistory, evalinfo
 
 
-## choose a replay buffer or implement your own
-replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # for uniform sampling 
-# replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, alpha=0.6, beta=0.2, beta_rate=0.002) # prioritized sampling
-
-
-# define the training strategy DQN in our example
-DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, MaxTrainEpisodes=500, skipSteps=1, device=device)
-                # might want to do MaxTrainEpisodes=250 for prioritized buffer
-
-
-# train the model
-trainHistory = DQNagent.trainAgent()
-
-
-# evaluate the model
-evalRewards = DQNagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=True)
-
-
-# plots the training rewards v/s episodes
-averaged_rewards = movingAverage(trainHistory['trainRewards'])
-plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
-plt.xlabel('episode')
-plt.ylabel('reward')
-plt.legend()
-plt.show()
+if __name__ == "__main__":
+    trainHistory, _ = run_DQN_on_cartpole_V0(True)
+    # plots the training rewards v/s episodes
+    averaged_rewards = movingAverage(trainHistory['trainRewards'])
+    plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
+    plt.xlabel('episode')
+    plt.ylabel('reward')
+    plt.legend()
+    plt.show()

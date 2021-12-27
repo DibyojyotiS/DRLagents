@@ -48,27 +48,42 @@ class net(nn.Module):
         return t
 
 
-# init necessities
-value_model = valueDNN(inDim=4, outDim=1, hDim=[8,8], activation=F.relu).to(device)
-policy_model = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
+def run_VPG1_on_cartpole_V0(evalRender=False):
+    # make a gym environment
+    env = gym.make('CartPole-v0')
 
-# init necessities
-policyOptimizer = optim.Adam(policy_model.parameters(), lr=0.01)
-valueOptimizer = optim.Adam(value_model.parameters(), lr=0.01)
-trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
-evalExplortionStrategy = greedyAction(policy_model)
+    # pick a suitable device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, policyOptimizer, 
-                valueOptimizer, gamma=0.99, skipSteps=1, MaxTrainEpisodes=400, device=device)
-trainHistory = VPGagent.trainAgent()
+    # create the net
+    value_model = valueDNN(inDim=4, outDim=1, hDim=[8,8], activation=F.relu).to(device)
+    policy_model = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
 
-# render
-VPGagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=True)
+    # init necessities
+    policyOptimizer = optim.Adam(policy_model.parameters(), lr=0.01)
+    valueOptimizer = optim.Adam(value_model.parameters(), lr=0.01)
+    trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
+    evalExplortionStrategy = greedyAction(policy_model)
 
-# plots the training rewards v/s episodes
-averaged_rewards = movingAverage(trainHistory['trainRewards'])
-plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
-plt.xlabel('episode')
-plt.ylabel('reward')
-plt.legend()
-plt.show()
+    VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, policyOptimizer, 
+                    valueOptimizer, gamma=0.99, skipSteps=1, MaxTrainEpisodes=400, device=device)
+    trainHistory = VPGagent.trainAgent()
+
+    # evaluate
+    evalinfo = VPGagent.evaluate(evalExplortionStrategy, EvalEpisodes=5, render=evalRender)
+
+    # close env
+    env.close()
+
+    return trainHistory, evalinfo
+
+
+if __name__ == "__main__":
+    trainHistory, _ = run_VPG1_on_cartpole_V0(True)
+    # plots the training rewards v/s episodes
+    averaged_rewards = movingAverage(trainHistory['trainRewards'])
+    plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
+    plt.xlabel('episode')
+    plt.ylabel('reward')
+    plt.legend()
+    plt.show()

@@ -243,6 +243,7 @@ class DQN:
         """ Evaluate the model for EvalEpisodes number of episodes """
 
         evalRewards = []
+        evalSteps = []
 
         for evalEpisode in range(EvalEpisodes):
 
@@ -286,11 +287,13 @@ class DQN:
 
             # append total episode reward
             evalRewards.append(totalReward)
+            evalSteps.append(steps)
 
             # print
             print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
         
-        return evalRewards
+        evalinfo = {'rewards': evalRewards, 'steps':evalSteps}
+        return evalinfo
 
 
     def _compute_loss_n_updateBuffer(self, states, actions, rewards, nextStates, dones, indices, sampleWeights):

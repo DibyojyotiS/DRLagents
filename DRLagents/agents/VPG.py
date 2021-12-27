@@ -380,6 +380,7 @@ class VPG:
         """ Evaluate the model for EvalEpisodes number of episodes """
 
         evalRewards = []
+        evalSteps = []
 
         for evalEpisode in range(EvalEpisodes):
 
@@ -423,8 +424,10 @@ class VPG:
 
             # append total episode reward
             evalRewards.append(totalReward)
+            evalSteps.append(steps)
 
             # print
             print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
         
-        return evalRewards
+        evalinfo = {'rewards': evalRewards, 'steps':evalSteps}
+        return evalinfo
