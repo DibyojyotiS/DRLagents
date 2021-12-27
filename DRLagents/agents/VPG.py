@@ -7,7 +7,7 @@ from typing import Union
 import gym
 import torch
 import torch.nn.functional as F
-from DRLagents.agents.helper_funcs.helper_funcs import clip_grads
+from DRLagents.agents.helper_funcs.helper_funcs import clip_grads, compute_GAE
 from DRLagents.explorationStrategies import Strategy
 from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
@@ -31,7 +31,8 @@ class VPG:
 
                 # optional training necessities
                 make_state = lambda listOfObs, listOfInfos: listOfObs[-1],
-                gamma = 0.8,
+                gamma = 0.99,
+                lamda = 0.8,
                 beta = 0.3,
                 MaxTrainEpisodes = 500,
                 MaxStepsPerEpisode = None,
@@ -42,6 +43,7 @@ class VPG:
                 skipSteps = 0,
                 breakAtReward = float('inf'),
                 printFreq = 50,
+                use_gae = True,
                 device= torch.device('cpu')) -> None:
         """ 
         ### pls read the notes at the bottom
@@ -68,6 +70,8 @@ class VPG:
 
         gamma: the discount factor
 
+        lamda: the GAE lamda to interpolate
+
         beta: entropy weight
 
         MaxTrainEpisodes: maximum number of episodes to train for
@@ -93,6 +97,9 @@ class VPG:
         
         printFreq: print episode reward every printFreq episode
 
+        use_gae: wether to compute and use the GAE returns to estimate action-advantage. If False,
+                the returns are used instead to estimate the action-advantage by subtracting state-value
+
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
         NOTE: The make_state function gets an input of a list of observations and infos corresponding to the skipped and the current states.
@@ -113,6 +120,7 @@ class VPG:
         # optional training necessities
         self.make_state = make_state
         self.gamma = gamma
+        self.lamda = lamda
         self.beta  = beta
         self.MaxTrainEpisodes = MaxTrainEpisodes
         self.MaxStepsPerEpisode = MaxStepsPerEpisode
@@ -123,6 +131,7 @@ class VPG:
         self.skipSteps = skipSteps + 1
         self.breakAtReward = breakAtReward
         self.printFreq = printFreq
+        self.use_gae = use_gae
         self.device = device
 
         # required inits
@@ -182,11 +191,14 @@ class VPG:
         mean_entropy = trajectory['entropy'].mean()
 
         # baseline
-        values = self.value_model(trajectory['state'][:-1]).squeeze(dim=-1)
+        values = self.value_model(trajectory['state']).squeeze(dim=-1)
+
+        # compute the action-advantages
+        action_advantages = partial_returns - values[:-1] if not self.use_gae else \
+                        compute_GAE(values, trajectory['reward'], self.gamma, self.lamda)
 
         # compute policy-loss
-        action_advantages = partial_returns - values.detach()
-        policyLoss = - (action_advantages*action_logprobs).mean() \
+        policyLoss = - (action_advantages.detach()*action_logprobs).mean() \
                             + self.beta*mean_entropy
 
         # grad-step policy model
@@ -196,7 +208,7 @@ class VPG:
         self.policy_optimizer.step()
 
         # grad-step value model
-        valueLoss = self._value_model_grad_step(values, partial_returns)
+        valueLoss = self._value_model_grad_step(values[:-1], partial_returns)
         for value_step in range(1, min(self.value_steps, values.shape[0])):
             values = self.value_model(trajectory['state'][:-1]).squeeze()
             valueLoss = self._value_model_grad_step(values, partial_returns)
