@@ -13,11 +13,17 @@ class frontDNN(nn.Module):
     def __init__(self, inDim:int, outDim:int) -> None:
         super(frontDNN, self).__init__()
         self.layer1 = nn.Linear(inDim, 8)
+        self.skiply = nn.Linear(inDim, outDim)
         self.layer2 = nn.Linear(8, outDim)
 
     def forward(self, x:torch.Tensor):
+        y = self.skiply(x)
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
+        # skip connection for value-fn
+        # if the value net needs to be drastically
+        # different from the policy-net
+        x = x + y
         return x
 
 # create the policy network
@@ -41,7 +47,8 @@ class valueDNN(nn.Module):
     def __init__(self, inDim, frontdnn:nn.Module):
         super(valueDNN, self).__init__()
         self.layer1 = nn.Linear(inDim, 8)
-        self.layer2 = nn.Linear(8, 1)
+        self.layer2 = nn.Linear(8, 8)
+        self.layer3 = nn.Linear(8, 1)
         self.front = frontdnn
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -50,13 +57,13 @@ class valueDNN(nn.Module):
         # the shared trunk (front)
         with torch.no_grad():
             x = self.front(x)
-        x = self.layer1(x)
-        x = F.relu(x)
-        x = self.layer2(x)
+        x = F.relu(self.layer1(x))
+        x = F.relu(self.layer2(x))
+        x = self.layer3(x)
         return x
 
 
-def run_VPG1_on_cartpole_V0(evalRender=False):
+def run_VPG_on_cartpole_V0(evalRender=False):
     # make a gym environment
     env = gym.make('CartPole-v0')
 
@@ -75,8 +82,8 @@ def run_VPG1_on_cartpole_V0(evalRender=False):
     evalExplortionStrategy = greedyAction(policy_model)
 
     VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, 
-                    policyOptimizer, valueOptimizer, gamma=0.99, skipSteps=1, 
-                    value_steps=10, MaxTrainEpisodes=400, device=device)
+                    policyOptimizer, valueOptimizer, gamma=0.99, lamda=0.8, 
+                    skipSteps=1, value_steps=10, MaxTrainEpisodes=400, device=device)
     trainHistory = VPGagent.trainAgent()
 
     # evaluate
@@ -88,7 +95,7 @@ def run_VPG1_on_cartpole_V0(evalRender=False):
     return trainHistory, evalinfo
 
 if __name__ == "__main__":
-    trainHistory, _ = run_VPG1_on_cartpole_V0(True)
+    trainHistory, _ = run_VPG_on_cartpole_V0(True)
     # plots the training rewards v/s episodes
     averaged_rewards = movingAverage(trainHistory['trainRewards'])
     plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")

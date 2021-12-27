@@ -66,8 +66,8 @@ def run_VPG_on_cartpole_V0(evalRender=False):
     evalExplortionStrategy = greedyAction(policy_model)
 
     VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, 
-                    policyOptimizer, valueOptimizer, gamma=0.99, skipSteps=1, 
-                    value_steps=10, MaxTrainEpisodes=400, device=device)
+                    policyOptimizer, valueOptimizer, gamma=0.99, lamda=0.8,
+                    skipSteps=1, value_steps=10, MaxTrainEpisodes=400, device=device)
     trainHistory = VPGagent.trainAgent()
 
     # evaluate
