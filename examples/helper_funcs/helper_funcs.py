@@ -33,7 +33,7 @@ def save_json(fname, _object):
         pass
 
 
-def make_plots(train_stats, eval_stats, savedir=None):
+def make_plots(train_stats, eval_stats, savedir=None, show=True):
     for key in train_stats.keys():
         data = train_stats[key]
         mean = data['E[x]']
@@ -44,7 +44,8 @@ def make_plots(train_stats, eval_stats, savedir=None):
         plt.xlabel('episode')
         plt.ylabel(key)
         if savedir: plt.savefig(f'{savedir}/trainplot_{key}.svg')
-        plt.show()
+        if show: plt.show()
+        plt.close()
     
     for key in eval_stats.keys():
         data = eval_stats[key]
@@ -52,7 +53,8 @@ def make_plots(train_stats, eval_stats, savedir=None):
         plt.xlabel('eval-run')
         plt.ylabel(key)
         if savedir: plt.savefig(f'{savedir}/evalplot_{key}.svg')
-        plt.show()
+        if show: plt.show()
+        plt.close()
 
 
 # generates plotting data from the results
@@ -70,27 +72,31 @@ def get_stats(results):
                         'min': data, 'max': data,
                         'E[x]': data/numRuns,
                         'points': list(enumerate(data)),
+                        'trace': [runId]*len(data)
                     }
             else:
                 curr = train_stats[key]
                 curr['points'].extend(list(enumerate(data)))
+                curr['trace'].extend([runId]*len(data))
                 updated_entry = {
                     'min': np.where(curr['min'] < data, curr['min'], data),
                     'max': np.where(curr['max'] > data, curr['max'], data),
                     'E[x]': curr['E[x]'] + data/numRuns,
-                    'points': curr['points']
+                    'points': curr['points'],
+                    'trace': curr['trace']
                 }
                 train_stats[key] = updated_entry
         for key in evalInfo.keys():
             data = list(evalInfo[key])
+            eval_stats['trace'].extend([runId]*len(data))
             eval_stats[key].extend(data)
   
     return train_stats, eval_stats
 
 
-def run_big_experiment(runfn, numRuns:int=1, numProcesses=8,
+def run_big_experiment(runfn, numRuns:int=1, numProcesses=4,
                     movingavgon:Union[list,None]=['trainRewards'],
-                    plot=True,savedir=None):    
+                    plot=True,savedir=None,show_plots=True):    
     start_time = perf_counter()
 
     if savedir and not os.path.exists(savedir):
@@ -115,6 +121,6 @@ def run_big_experiment(runfn, numRuns:int=1, numProcesses=8,
 
     # plot stuff
     if plot:
-        make_plots(train_stats, eval_stats, savedir)
+        make_plots(train_stats, eval_stats, savedir, show_plots)
     
     return train_stats, eval_stats
