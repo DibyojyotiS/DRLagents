@@ -26,41 +26,36 @@ def run_big_experiment(runfn, numRuns:int=1, numProcesses=8,
 
     train_stats = {}
     eval_stats = defaultdict(list)
-    for trainHist, evalInfo in results:
+    print(f'accumulating {len(results)} results')
+    while results:
+        trainHist, evalInfo = results.pop()
         for key in trainHist.keys():
             data = np.array(trainHist[key])
             if key not in train_stats:
                 train_stats[key] = {
                         'min': data, 'max': data,
-                        'E[x^2]': (data**2)/numRuns, 
-                        'E[x]': data/numRuns
+                        'E[x]': data/numRuns,
+                        'points': list(enumerate(data))
                     }
             else:
                 current = train_stats[key]
+                current['points'].extend(list(enumerate(data)))
                 updated_entry = {
                     'min': np.where(current['min'] < data, current['min'], data),
-                    'max': np.where(current['max'] > data, current['min'], data),
+                    'max': np.where(current['max'] > data, current['max'], data),
                     'E[x]': current['E[x]'] + data/numRuns,
-                    'E[x^2]': current['E[x^2]'] + (data**2)/numRuns
+                    'points': current['points']
                 }
                 train_stats[key] = updated_entry
         
         for key in evalInfo.keys():
             data = list(evalInfo[key])
             eval_stats[key].extend(data)
-    
-
-    # compute std
-    for key in train_stats.keys():
-        mean = train_stats[key]['E[x]']
-        Ex2 = train_stats[key]['E[x^2]']
-        del train_stats[key]['E[x^2]']
-        std = np.sqrt(Ex2 - mean)
-        train_stats[key]['std'] = std
 
     if movingavgon is not None:
         for key in movingavgon:
             for mkey in train_stats[key].keys():
+                if mkey == 'points': continue
                 train_stats[key][mkey] = movingAverage(train_stats[key][mkey])   
 
     print(f"total-time taken {(perf_counter() - start_time)/60:.2f} minutes")
@@ -70,10 +65,10 @@ def run_big_experiment(runfn, numRuns:int=1, numProcesses=8,
         for key in train_stats.keys():
             data = train_stats[key]
             mean = data['E[x]']
-            std = data['std']
-            plt.plot(mean)
+            xy = [*zip(*data['points'])]
+            p = plt.plot(mean)
             plt.fill_between(range(len(mean)), data['min'], data['max'], alpha=0.2)
-            plt.fill_between(range(len(mean)), mean-3*std, mean+3*std, alpha=0.5)
+            plt.scatter(xy[0],xy[1],s=0.1,c=p[-1].get_color(),alpha=0.6)
             plt.xlabel('episode')
             plt.ylabel(key)
             plt.show()
