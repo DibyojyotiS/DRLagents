@@ -120,7 +120,7 @@ class VPG:
         self.value_steps = value_steps
 
         # miscellaneous
-        self.skipSteps = skipSteps
+        self.skipSteps = skipSteps + 1
         self.breakAtReward = breakAtReward
         self.printFreq = printFreq
         self.device = device
@@ -346,7 +346,8 @@ class VPG:
 
     def _trajectory_to_tensor(self, trajectory:'dict[str, list]') -> 'dict[str, Tensor]':
         ''' converts the trajectory from dict[str, list] to dict[str, Tensor]
-        while mainitaining backprop path for log_prob and entropy entries '''
+        while mainitaining backprop path for log_prob and entropy entries.
+        uses torch.cat under the hood to retain backprop graph '''
         for k in ['state', 'reward', 'action']:
             trajectory[k] = self._to_tensor(trajectory[k])
         trajectory['log_prob'] = torch.cat(tuple(trajectory['log_prob']))

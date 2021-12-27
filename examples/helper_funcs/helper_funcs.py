@@ -88,7 +88,7 @@ def get_stats(results):
                 train_stats[key] = updated_entry
         for key in evalInfo.keys():
             data = list(evalInfo[key])
-            eval_stats['trace'].extend([runId]*len(data))
+            # eval_stats['trace'].extend([runId]*len(data))
             eval_stats[key].extend(data)
   
     return train_stats, eval_stats

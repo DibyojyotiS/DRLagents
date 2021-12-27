@@ -48,7 +48,7 @@ class net(nn.Module):
         return t
 
 
-def run_VPG1_on_cartpole_V0(evalRender=False):
+def run_VPG_on_cartpole_V0(evalRender=False):
     # make a gym environment
     env = gym.make('CartPole-v0')
 
@@ -65,8 +65,9 @@ def run_VPG1_on_cartpole_V0(evalRender=False):
     trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
     evalExplortionStrategy = greedyAction(policy_model)
 
-    VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, policyOptimizer, 
-                    valueOptimizer, gamma=0.99, skipSteps=1, MaxTrainEpisodes=400, device=device)
+    VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, 
+                    policyOptimizer, valueOptimizer, gamma=0.99, skipSteps=1, 
+                    value_steps=10, MaxTrainEpisodes=400, device=device)
     trainHistory = VPGagent.trainAgent()
 
     # evaluate
@@ -79,7 +80,7 @@ def run_VPG1_on_cartpole_V0(evalRender=False):
 
 
 if __name__ == "__main__":
-    trainHistory, _ = run_VPG1_on_cartpole_V0(True)
+    trainHistory, _ = run_VPG_on_cartpole_V0(True)
     # plots the training rewards v/s episodes
     averaged_rewards = movingAverage(trainHistory['trainRewards'])
     plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")

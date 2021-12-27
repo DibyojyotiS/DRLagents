@@ -21,12 +21,21 @@ def clip_grads(model:nn.Module, _min=-1.0, _max=1.0):
 
 
 # GAE estimate
-def compute_GAE(value_estimates, rewards, gamma, lamda):
+def compute_GAE(values:Tensor, rewards, gamma:float, lamda:float):
     '''
     value_estimates: values from value_model on the trajectory
     rewards: the rewards encountered in the trajectory
     gamma: discount factor
     lamda: i danced on the moon
+    Assumes that the last value belongs to a terminal state
     '''
+
+    T = len(rewards) # last state is terminal
+
+    gae = torch.zeros_like(values)
     
-    raise NotImplementedError()
+    for t in reversed(range(T)):
+        delta = rewards[t] + gamma*(t!=T-1)*values[t+1] - values[t]
+        gae[t] = delta + gamma*lamda*gae[t+1]*(t!=T-1)
+
+    return gae
