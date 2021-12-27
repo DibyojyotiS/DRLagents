@@ -1,5 +1,5 @@
 import torch
-from torch import nn
+from torch import Tensor, nn
 
 def polyak_update(online_model:nn.Module, target_model:nn.Module, tau=0.1):
     """ sets all the parameters of the target_model as 
@@ -18,3 +18,15 @@ def clip_grads(model:nn.Module, _min=-1.0, _max=1.0):
     for param in model.parameters():
         if param.grad is None: continue
         param.grad.clamp(_min, _max)
+
+
+# GAE estimate
+def compute_GAE(value_estimates, rewards, gamma, lamda):
+    '''
+    value_estimates: values from value_model on the trajectory
+    rewards: the rewards encountered in the trajectory
+    gamma: discount factor
+    lamda: i danced on the moon
+    '''
+
+    raise NotImplementedError()

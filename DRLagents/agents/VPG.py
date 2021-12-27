@@ -284,7 +284,7 @@ class VPG:
         return partial_Gts
 
 
-    def _take_steps(self, action:Tensor, render=False):
+    def _take_steps(self, action:Tensor):
         """ This executes the action, and handels frame skipping.
         In frame skipping the same action is repeated and the observations
         and infos are are stored in a list. The next state (where the agent 
@@ -406,7 +406,7 @@ class VPG:
                 action = evalExplortionStrategy.select_action(state_tensor)
 
                 # repeat the action skipStep number of times
-                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action, render=render)
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
 
                 steps += stepsTaken
                 totalReward += sumReward
