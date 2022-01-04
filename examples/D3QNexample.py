@@ -9,7 +9,7 @@ from torch import nn, optim
 from DRLagents import *
 
 
-# change buffertype to 'uniform' for Uniform-buffer
+# change buffertype to 'uniform' for Uniform-Sampling-buffer
 def run_D3QN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
 
     # create the deep network
@@ -39,7 +39,7 @@ def run_D3QN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
 
     # init necessities
     duellingQnetwork = duellingDNN(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
-    optimizer = optim.Adam(duellingQnetwork.parameters(), lr=0.005)
+    optimizer = optim.Adam(duellingQnetwork.parameters(), lr=0.001)
     trainExplortionStrategy = epsilonGreedyAction(duellingQnetwork, 0.5, 0.05, 100)
     evalExplortionStrategy = greedyAction(duellingQnetwork)
 
