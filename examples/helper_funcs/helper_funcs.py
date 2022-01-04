@@ -33,7 +33,7 @@ def save_json(fname, _object):
         pass
 
 
-def make_plots(train_stats, eval_stats, savedir=None, show=True):
+def make_plots(train_stats, eval_stats, savedir=None, show=True, title=None):
     for key in train_stats.keys():
         data = train_stats[key]
         mean = data['E[x]']
@@ -43,6 +43,7 @@ def make_plots(train_stats, eval_stats, savedir=None, show=True):
         plt.scatter(xy[0],xy[1],s=0.1,c=data['trace'],alpha=0.6)
         plt.xlabel('episode')
         plt.ylabel(key)
+        if title: plt.title(title)
         if savedir: plt.savefig(f'{savedir}/trainplot_{key}.svg')
         if show: plt.show()
         plt.close()
@@ -121,6 +122,6 @@ def run_big_experiment(runfn, numRuns:int=1, numProcesses=4,
 
     # plot stuff
     if plot:
-        make_plots(train_stats, eval_stats, savedir, show_plots)
+        make_plots(train_stats, eval_stats, savedir, show_plots, title=runfn.__name__)
     
     return train_stats, eval_stats
