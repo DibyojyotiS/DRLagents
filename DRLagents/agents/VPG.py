@@ -14,13 +14,16 @@ from torch.optim.optimizer import Optimizer
 
 
 class VPG:
-    ''' ## Vanila Policy Gradient with Baseline
+    ''' ## Vanila Policy Gradient with GAE
 
-    The baseline used is the state-value function.
-    The value is substracted from the return at any 
-    time step giving the action advantage. 
-    Entropy is also added to the VPG loss after 
-    being scaled by a factor of beta. '''
+    action-advantage is estimated using the GAE
+    Entropy is also added to the policy loss after 
+    being scaled by a factor of beta. 
+    
+    It is also possible to not use GAE and rather
+    estimate action-advantages using the partial
+    returns and value-network directly. (This corresponds
+    to lamda = 1 in case of GAE)'''
 
     def __init__(self, 
                 # training necessities
@@ -33,7 +36,7 @@ class VPG:
                 make_state = lambda listOfObs, listOfInfos: listOfObs[-1],
                 gamma = 0.99,
                 lamda = 0.8,
-                beta = 0.3,
+                beta = 0.2,
                 MaxTrainEpisodes = 500,
                 MaxStepsPerEpisode = None,
                 trajectory_seg_length = None,
