@@ -1,12 +1,15 @@
 from copy import deepcopy
 from time import perf_counter
+from typing import Union
 
 import gym
+from numpy.core.fromnumeric import mean
 import torch
 from torch import nn
 from torch import optim
 
 from DRLagents.agents.helper_funcs.helper_funcs import clip_grads
+from DRLagents.explorationStrategies.greedyStrategy import greedyAction
 from .helper_funcs import polyak_update
 
 from DRLagents.explorationStrategies import Strategy
@@ -45,6 +48,8 @@ class DQN:
                 polyak_tau = 0.1,
                 breakAtReward = float('inf'),
                 printFreq = 50,
+                eval_episode = None,
+                evalExplortionStrategy: Union[Strategy, None]=None,
                 device= torch.device('cpu')) -> None:
         '''
         # Psss note the notes at the bottom too.
@@ -99,6 +104,9 @@ class DQN:
         
         printFreq: print episode reward every printFreq episode
 
+        eval_episode: evaluate the agent after every eval_episode-th episode
+
+        evalExplortionStrategy: strategy to be used for evalutation : default greedy-strategy
 
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
@@ -139,11 +147,19 @@ class DQN:
         self.breakAtReward = breakAtReward
         self.device = device
         self.printFreq = printFreq
+        self.eval_episode = eval_episode
 
         # required inits
         self.target_model.eval()
         self._initBookKeeping()
         self.optimize_at_end = optimize_kth_step==-1
+
+        if not evalExplortionStrategy:
+            self.evalExplortionStrategy = greedyAction(self.online_model)
+            print("Using greedy strategy as evalExplortionStrategy.")
+        else:
+            self.evalExplortionStrategy = evalExplortionStrategy
+
         
 
     def trainAgent(self, render=False):
@@ -201,25 +217,38 @@ class DQN:
             if self.optimize_at_end:
                 totalLoss = self._optimizeModel()
 
-            # decay exploration strategy params
-            self.trainExplortionStrategy.decay()
-
-            # update the replay buffer params
-            self.replayBuffer.update_params()
-
-            # do book keeping
-            self._performBookKeeping(totalReward, steps, totalLoss, perf_counter()-timeStart)
-
             # update target model
             if episode % self.update_freq == 0:
                 self.target_model.load_state_dict(self.online_model.state_dict())
             elif self.polyak_average:
                 polyak_update(self.online_model, self.target_model, self.tau)
 
+            # decay exploration strategy params
+            self.trainExplortionStrategy.decay()
+
+            # update the replay buffer params
+            self.replayBuffer.update_params()
+
+            # do train-book keeping
+            self._performTrainBookKeeping(episode, totalReward, steps, totalLoss, perf_counter()-timeStart)
+
+            # evaluate the agent and do eval-book keeping
+            eval_done=False
+            if self.eval_episode and (episode+1)%self.eval_episode == 0:
+                eval_info = self.evaluate(self.evalExplortionStrategy, verbose=False)
+                evalReward = mean(eval_info['rewards'])
+                evalSteps = mean(eval_info['steps'])
+                evalWallTime = mean(eval_info['wallTimes'])
+                self._performEvalBookKeeping(episode, evalReward, evalSteps, evalWallTime)
+                eval_done = True
+
             # show progress output
             if episode % self.printFreq == 0:
-                print(f'episode: {episode} -> reward: {totalReward}, steps:{steps} time-elasped: {perf_counter()-timeStart:.2f}s')
+                print(f'episode: {episode} -> reward: {totalReward}, steps:{steps}, wall-time: {perf_counter()-timeStart:.2f}s')
+                if eval_done:
+                    print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
 
+            # early breaking
             if totalReward >= self.breakAtReward:
                 print(f'stopping at episode {episode}')
                 break
@@ -227,27 +256,26 @@ class DQN:
         # print the last episode if not already printed
         if episode % self.printFreq != 0:
             print(f'episode: {episode} -> reward: {totalReward}, steps:{steps} time-elasped: {perf_counter()-timeStart:.2f}s')
+            if eval_done:
+                print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
 
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    
         
-        return {
-            'trainRewards': self.trainRewards, 
-            'episodeSteps': self.episodeSteps, 
-            'loss': self.loss, 
-            'wallTime': self.wallTime
-        }
+        return self._returnBook()
 
 
-    def evaluate(self, evalExplortionStrategy:Strategy, EvalEpisodes=1, render=False):
+    def evaluate(self, evalExplortionStrategy:Strategy, EvalEpisodes=1, render=False, verbose=True):
         """ Evaluate the model for EvalEpisodes number of episodes """
 
         evalRewards = []
         evalSteps = []
+        wallTimes = []
 
         for evalEpisode in range(EvalEpisodes):
 
             done = False
+            timeStart = perf_counter()
             observation = self.env.reset()
             info = None # no initial info from gym.Env.reset
 
@@ -288,11 +316,13 @@ class DQN:
             # append total episode reward
             evalRewards.append(totalReward)
             evalSteps.append(steps)
+            wallTimes.append(perf_counter() - timeStart)
 
             # print
-            print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
+            if verbose:
+                print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
         
-        evalinfo = {'rewards': evalRewards, 'steps':evalSteps}
+        evalinfo = {'rewards': evalRewards, 'steps':evalSteps, 'wallTimes':wallTimes}
         return evalinfo
 
 
@@ -443,17 +473,29 @@ class DQN:
 
 
     def _initBookKeeping(self):
-        self.trainRewards = []
-        self.episodeSteps = []
-        self.loss = []
-        self.wallTime = []
+        self.trainBook = {
+            'episode':[], 'reward': [], 'steps': [],
+            'loss': [], 'wallTime': []
+        }
+        self.evalBook = {
+            'episode':[], 'reward': [], 'steps': [],
+            'wallTime': []
+        }
 
 
-    def _performBookKeeping(self, trainReward, steps, totalLoss, timeElasped):
-        self.trainRewards.append(trainReward)
-        self.episodeSteps.append(steps)
-        self.loss.append(totalLoss)
-        self.wallTime.append(timeElasped)   
+    def _performTrainBookKeeping(self, episode, reward, steps, loss, wallTime):
+        self.trainBook['episode'].append(episode)
+        self.trainBook['reward'].append(reward)
+        self.trainBook['steps'].append(steps)
+        self.trainBook['loss'].append(loss)
+        self.trainBook['wallTime'].append(wallTime)
+
+
+    def _performEvalBookKeeping(self, episode, reward, steps, wallTime):
+        self.evalBook['episode'].append(episode)
+        self.evalBook['reward'].append(reward)
+        self.evalBook['steps'].append(steps)
+        self.evalBook['wallTime'].append(wallTime)
 
 
     def _astensor(self, nextState, action, reward, done):
@@ -462,3 +504,10 @@ class DQN:
         reward = torch.tensor([reward], dtype=torch.float32, device=self.device, requires_grad=False)
         done = torch.tensor([done], dtype=torch.int, device=self.device, requires_grad=False)
         return nextState, action, reward, done
+
+    
+    def _returnBook(self):
+        return {
+            'train': self.trainBook,
+            'eval': self.evalBook
+        }

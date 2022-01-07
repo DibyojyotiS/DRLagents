@@ -1,10 +1,12 @@
 # Reinforce with baseline (VPG) is implemented here 
 # This particular version also uses entropy in the policy loss
 
+from copy import deepcopy
 from time import perf_counter
 from typing import Union
 
 import gym
+from numpy.core.fromnumeric import mean
 import torch
 import torch.nn.functional as F
 from DRLagents.agents.helper_funcs.helper_funcs import clip_grads, compute_GAE
@@ -47,6 +49,8 @@ class VPG:
                 breakAtReward = float('inf'),
                 printFreq = 50,
                 use_gae = True,
+                eval_episode = None,
+                evalExplortionStrategy: Union[Strategy, None]=None,
                 device= torch.device('cpu')) -> None:
         """ 
         ### pls read the notes at the bottom
@@ -103,6 +107,10 @@ class VPG:
         use_gae: wether to compute and use the GAE returns to estimate action-advantage. If False,
                 the returns are used instead to estimate the action-advantage by subtracting state-value
 
+        eval_episode: evaluate the agent after every eval_episode-th episode
+
+        evalExplortionStrategy: strategy to be used for evalutation : default - trainExplortionStrategy
+
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
         NOTE: The make_state function gets an input of a list of observations and infos corresponding to the skipped and the current states.
@@ -136,9 +144,16 @@ class VPG:
         self.printFreq = printFreq
         self.use_gae = use_gae
         self.device = device
+        self.eval_episode = eval_episode
 
         # required inits
         self._initBookKeeping()
+
+        if not evalExplortionStrategy:
+            self.evalExplortionStrategy = deepcopy(trainExplortionStrategy)
+            print("Using trainExplortionStrategy as evalExplortionStrategy.")
+        else:
+            self.evalExplortionStrategy = evalExplortionStrategy      
 
 
     def trainAgent(self, render=False):
@@ -154,13 +169,25 @@ class VPG:
                 trajectory, totalReward, total_steps = output_tupple
                 policyloss, valueloss, avgEntropy = self._optimizeAgent(trajectory)
 
-            # do book-keeping
-            self._performBookKeeping(totalReward, total_steps, policyloss, 
+            # do train book-keeping
+            self._performTrainBookKeeping(episode, totalReward, total_steps, policyloss, 
                                         valueloss, perf_counter()-timeStart, avgEntropy)
+
+            # evaluate the agent and do eval-book keeping
+            eval_done=False
+            if self.eval_episode and (episode+1)%self.eval_episode == 0:
+                eval_info = self.evaluate(self.evalExplortionStrategy, verbose=False)
+                evalReward = mean(eval_info['rewards'])
+                evalSteps = mean(eval_info['steps'])
+                evalWallTime = mean(eval_info['wallTimes'])
+                self._performEvalBookKeeping(episode, evalReward, evalSteps, evalWallTime)
+                eval_done = True
 
             # show progress output
             if episode % self.printFreq == 0:
                 print(f'episode: {episode} -> reward: {totalReward}, steps:{total_steps} time-elasped: {perf_counter()-timeStart:.2f}s')
+                if eval_done:
+                    print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -170,18 +197,74 @@ class VPG:
         # print the last episode if not already printed
         if episode % self.printFreq != 0:
             print(f'episode: {episode} -> reward: {totalReward}, steps:{total_steps} time-elasped: {perf_counter()-timeStart:.2f}s')
+            if eval_done:
+                print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
 
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    
         
-        return {
-            'trainRewards': self.trainRewards, 
-            'episodeSteps': self.episodeSteps, 
-            'policylosses': self.policylosses, 
-            'valuelosses': self.valuelosses,
-            'wallTime': self.wallTime,
-            'entropies':self.entropies
-        }
+        return self._returnBook()
+
+
+    def evaluate(self, evalExplortionStrategy:Strategy, EvalEpisodes=1, render=False, verbose=True):
+        """ Evaluate the model for EvalEpisodes number of episodes """
+
+        evalRewards = []
+        evalSteps = []
+        wallTimes = []
+
+        for evalEpisode in range(EvalEpisodes):
+
+            done = False
+            timeStart = perf_counter()
+            observation = self.env.reset()
+            info = None # no initial info from gym.Env.reset
+
+            # counters
+            steps = 0
+            totalReward = 0
+
+            # user defines this func to make a state from a list of observations and infos
+            state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
+
+            # render
+            if render: self.env.render()
+
+            while not done:
+
+                state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
+
+                # take action
+                action = evalExplortionStrategy.select_action(state_tensor)
+
+                # repeat the action skipStep number of times
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
+
+                steps += stepsTaken
+                totalReward += sumReward
+
+                if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
+
+                # update state
+                state = nextState
+
+                # render
+                if render: self.env.render()
+
+            # decay exploration strategy params
+            evalExplortionStrategy.decay()
+
+            # append total episode reward
+            evalRewards.append(totalReward)
+            evalSteps.append(steps)
+            wallTimes.append(perf_counter() - timeStart)
+
+            # print
+            if verbose:
+                print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
+        
+        evalinfo = {'rewards': evalRewards, 'steps':evalSteps, 'wallTimes':wallTimes}
+        return evalinfo
 
 
     def _optimizeAgent(self, trajectory:'dict[str, Tensor]'):
@@ -370,80 +453,41 @@ class VPG:
         return trajectory
 
 
-    def _initBookKeeping(self):
-        self.trainRewards = []
-        self.episodeSteps = []
-        self.policylosses = []
-        self.valuelosses = []
-        self.wallTime = []
-        self.entropies = []
-
-
-    def _performBookKeeping(self, trainReward, steps, policyloss, valueloss, timeElasped, entropy):
-        self.trainRewards.append(trainReward)
-        self.episodeSteps.append(steps)
-        self.policylosses.append(policyloss)
-        self.valuelosses.append(valueloss)
-        self.wallTime.append(timeElasped)
-        self.entropies.append(entropy)
-
-
     def _to_tensor(self, data:'list[Tensor]', requires_grad = False):
         return torch.tensor(data, dtype=torch.float32, device=self.device, requires_grad=requires_grad)
 
 
-    def evaluate(self, evalExplortionStrategy:Strategy, EvalEpisodes=1, render=False):
-        """ Evaluate the model for EvalEpisodes number of episodes """
+    def _initBookKeeping(self):
+        self.trainBook = {
+            'episode':[], 'reward': [], 'steps': [],
+            'policy-loss': [], 'value-loss':[], 'wallTime': [],
+            'entropy': []
+        }
+        self.evalBook = {
+            'episode':[], 'reward': [], 'steps': [],
+            'wallTime': []
+        }
 
-        evalRewards = []
-        evalSteps = []
 
-        for evalEpisode in range(EvalEpisodes):
+    def _performTrainBookKeeping(self, episode, reward, steps, policyLoss, valueLoss, wallTime, _entropy):
+        self.trainBook['episode'].append(episode)
+        self.trainBook['reward'].append(reward)
+        self.trainBook['steps'].append(steps)
+        self.trainBook['policy-loss'].append(policyLoss)
+        self.trainBook['value-loss'].append(valueLoss)
+        self.trainBook['wallTime'].append(wallTime)
+        self.trainBook['entropy'].append(_entropy)
 
-            done = False
-            observation = self.env.reset()
-            info = None # no initial info from gym.Env.reset
 
-            # counters
-            steps = 0
-            totalReward = 0
+    def _performEvalBookKeeping(self, episode, reward, steps, wallTime):
+        self.evalBook['episode'].append(episode)
+        self.evalBook['reward'].append(reward)
+        self.evalBook['steps'].append(steps)
+        self.evalBook['wallTime'].append(wallTime)
 
-            # user defines this func to make a state from a list of observations and infos
-            state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
-
-            # render
-            if render: self.env.render()
-
-            while not done:
-
-                state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
-
-                # take action
-                action = evalExplortionStrategy.select_action(state_tensor)
-
-                # repeat the action skipStep number of times
-                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
-
-                steps += stepsTaken
-                totalReward += sumReward
-
-                if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
-
-                # update state
-                state = nextState
-
-                # render
-                if render: self.env.render()
-
-            # decay exploration strategy params
-            evalExplortionStrategy.decay()
-
-            # append total episode reward
-            evalRewards.append(totalReward)
-            evalSteps.append(steps)
-
-            # print
-            print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
-        
-        evalinfo = {'rewards': evalRewards, 'steps':evalSteps}
-        return evalinfo
+    
+    def _returnBook(self):
+        return {
+            'train': self.trainBook,
+            'eval': self.evalBook
+        }

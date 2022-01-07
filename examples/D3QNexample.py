@@ -70,9 +70,10 @@ def run_D3QN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
 
 if __name__ == "__main__":
     trainHistory, _ = run_D3QN_on_cartpole_V0(True)
+    trainHistory = trainHistory['train']
     # plots the training rewards v/s episodes
-    averaged_rewards = movingAverage(trainHistory['trainRewards'])
-    plt.plot([*range(len(trainHistory['trainRewards']))], averaged_rewards, label="train rewards")
+    averaged_rewards = movingAverage(trainHistory['reward'])
+    plt.plot(trainHistory['episode'], averaged_rewards, label="train rewards")
     plt.xlabel('episode')
     plt.ylabel('reward')
     plt.legend()

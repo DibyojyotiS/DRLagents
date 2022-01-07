@@ -1,8 +1,9 @@
 # being implemented
 from DRLagents.utils.helper_funcs import set_seed
 from examples.D3QNexample import run_D3QN_on_cartpole_V0
+from examples.DQNexample import run_DQN_on_cartpole_V0
 from examples.VPGexample import run_VPG_on_cartpole_V0
-from examples.helper_funcs.helper_funcs import run_big_experiment
+from examples.helper_funcs.bigExperiment import run_big_experiment
 
 
 if __name__ == "__main__":
@@ -12,4 +13,8 @@ if __name__ == "__main__":
 
     # PERD3QNresults = run_big_experiment(run_D3QN_on_cartpole_V0, 5, 
     #                                 savedir='.temp_stuffs/PERD3QN_stuff',
+    #                                 show_plots=True)
+
+    # DQNresults = run_big_experiment(run_DQN_on_cartpole_V0, 5, 
+    #                                 savedir='.temp_stuffs/DQN_stuff',
     #                                 show_plots=True)
