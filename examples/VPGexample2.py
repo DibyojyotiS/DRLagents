@@ -65,6 +65,7 @@ class valueDNN(nn.Module):
 
 
 def run_VPG_on_cartpole_V0(evalRender=False):
+    print("policy-model & value-model with shared layers")
     # make a gym environment
     env = gym.make('CartPole-v0')
 
