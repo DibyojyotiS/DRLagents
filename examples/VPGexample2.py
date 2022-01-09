@@ -1,4 +1,5 @@
 # Tutorial for VPG
+# sharing some layers between value-model and policy-model
 
 import gym
 import matplotlib.pyplot as plt
@@ -13,17 +14,17 @@ class frontDNN(nn.Module):
     def __init__(self, inDim:int, outDim:int) -> None:
         super(frontDNN, self).__init__()
         self.layer1 = nn.Linear(inDim, 8)
-        self.skiply = nn.Linear(inDim, outDim)
+        # self.skiply = nn.Linear(inDim, outDim)s
         self.layer2 = nn.Linear(8, outDim)
 
     def forward(self, x:torch.Tensor):
-        y = self.skiply(x)
+        # y = self.skiply(x)
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
         # skip connection for value-fn
         # if the value net needs to be drastically
         # different from the policy-net
-        x = x + y
+        # x = x + y # uncomment if required
         return x
 
 # create the policy network
@@ -83,7 +84,7 @@ def run_VPG_on_cartpole_V0(evalRender=False):
 
     VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, 
                     policyOptimizer, valueOptimizer, gamma=0.99, lamda=0.8, 
-                    skipSteps=1, value_steps=10, MaxTrainEpisodes=400, 
+                    skipSteps=1, value_steps=10, MaxTrainEpisodes=500, 
                     eval_episode=5, device=device)
     trainHistory = VPGagent.trainAgent()
 

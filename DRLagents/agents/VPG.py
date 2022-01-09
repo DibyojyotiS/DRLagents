@@ -14,6 +14,8 @@ from DRLagents.explorationStrategies import Strategy
 from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
 
+from DRLagents.explorationStrategies.greedyStrategy import greedyAction
+
 
 class VPG:
     ''' ## Vanila Policy Gradient with GAE
@@ -32,7 +34,7 @@ class VPG:
                 env:gym.Env, policy_model: nn.Module, value_model:nn.Module,
                 trainExplortionStrategy: Strategy,
                 policy_optimizer: Optimizer, 
-                value_optimizer: Optimizer, 
+                value_optimizer: Optimizer,
 
                 # optional training necessities
                 make_state = lambda listOfObs, listOfInfos: listOfObs[-1],
@@ -51,6 +53,8 @@ class VPG:
                 use_gae = True,
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
+                shared_policy_value_nets = False,
+                c1=1.2,
                 device= torch.device('cpu')) -> None:
         """ 
         ### pls read the notes at the bottom
@@ -109,15 +113,20 @@ class VPG:
 
         eval_episode: evaluate the agent after every eval_episode-th episode
 
-        evalExplortionStrategy: strategy to be used for evalutation : default - trainExplortionStrategy
+        evalExplortionStrategy: strategy to be used for evalutation : default - greedy
+
+        shared_policy_value_nets: whether the policy and value nets share some parameters, in this case the policy and value-loss
+                                    are combined together as: policy-loss + c1 * value-loss
 
         # Implementation notes:\n
+        NOTE: policy_model maps the states to action log-probablities
+        NOTE: It is not recommended to share layers between value and policy model for this implementation of VPG.
+                See VPGexample2 for a sketchy way to share layers.
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
         NOTE: The make_state function gets an input of a list of observations and infos corresponding to the skipped and the current states.
         NOTE: The initial list of observations is the initial observation repeated skipSteps+1 number of times.
         NOTE: If episode terminates while skipping, the list is padded with the last observation and info
         NOTE: The models are not updated within the skipSteps steps.
-        NOTE: policy_model maps the states to action log-probablities
         NOTE: value_model returns a single value for each state """
 
         # training necessities
@@ -145,12 +154,14 @@ class VPG:
         self.use_gae = use_gae
         self.device = device
         self.eval_episode = eval_episode
+        self.shared_nets = shared_policy_value_nets
+        self.c1 = c1
 
         # required inits
         self._initBookKeeping()
 
         if not evalExplortionStrategy:
-            self.evalExplortionStrategy = deepcopy(trainExplortionStrategy)
+            self.evalExplortionStrategy = greedyAction(self.policy_model, outputs_LogProbs=True)
             print("Using trainExplortionStrategy as evalExplortionStrategy.")
         else:
             self.evalExplortionStrategy = evalExplortionStrategy      
@@ -276,7 +287,7 @@ class VPG:
         action_logprobs = trajectory['log_prob']
         mean_entropy = trajectory['entropy'].mean()
 
-        # baseline
+        # state-values
         values = self.value_model(trajectory['state']).squeeze(dim=-1)
 
         # compute the action-advantages
@@ -284,8 +295,7 @@ class VPG:
                         compute_GAE(values, trajectory['reward'], self.gamma, self.lamda)
 
         # compute policy-loss
-        policyLoss = - (action_advantages.detach()*action_logprobs).mean() \
-                            + self.beta*mean_entropy
+        policyLoss = - (action_advantages.detach()*action_logprobs).mean() + self.beta*mean_entropy
 
         # grad-step policy model
         self.policy_optimizer.zero_grad()
@@ -294,12 +304,21 @@ class VPG:
         self.policy_optimizer.step()
 
         # grad-step value model
-        valueLoss = self._value_model_grad_step(values[:-1], partial_returns)
+        valueLoss = F.mse_loss(values[:-1].squeeze(), partial_returns.squeeze())
+        self.value_optimizer.zero_grad()
+        valueLoss.backward()
+        clip_grads(self.value_model)
+        self.value_optimizer.step()
+
         for value_step in range(1, min(self.value_steps, values.shape[0])):
             values = self.value_model(trajectory['state'][:-1]).squeeze()
-            valueLoss = self._value_model_grad_step(values, partial_returns)
+            valueLoss = F.mse_loss(values.squeeze(), partial_returns.squeeze())
+            self.value_optimizer.zero_grad()
+            valueLoss.backward()
+            clip_grads(self.value_model)
+            self.value_optimizer.step()
 
-        return policyLoss.item(), valueLoss, mean_entropy.item()
+        return policyLoss.item(), valueLoss.item(), mean_entropy.item()
 
 
     def _genetate_trajectory(self, render=False):
@@ -430,16 +449,6 @@ class VPG:
         nextState = self.make_state(observationList, infoList)
 
         return nextState, accumulatedReward, sumReward, done, stepsTaken
-
-
-    def _value_model_grad_step(self, values:Tensor, partial_returns:Tensor):
-        ''' compute loss and do single gradient step for value_model '''
-        valueLoss = F.mse_loss(values.squeeze(), partial_returns.squeeze())
-        self.value_optimizer.zero_grad()
-        valueLoss.backward()
-        clip_grads(self.value_model)
-        self.value_optimizer.step()
-        return valueLoss.item()
 
 
     def _trajectory_to_tensor(self, trajectory:'dict[str, list]') -> 'dict[str, Tensor]':
