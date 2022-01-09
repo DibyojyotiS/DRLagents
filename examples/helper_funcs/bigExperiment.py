@@ -83,7 +83,6 @@ def make_plots(stats:dict, movingavgon=[], savedir=None, show=False, title=''):
         if type(stats[key]) is dict and 'plotable' not in stats[key]:
             make_plots(stats[key], movingavgon, savedir, show, f'{title}-{key}')
         else:
-            if key == 'trace': continue
             data = stats[key]
             fn = movingAverage if key in movingavgon else lambda x:x
             if 'mean' in data:
@@ -125,6 +124,7 @@ def run_big_experiment(runfn, numRuns:int=1, numProcesses=4,
         make_plots(train_stats, movingavgon, savedir, show_plots, title=runfn.__name__)
 
         for key in eval_stats.keys():
+            if key == 'trace': continue
             data = eval_stats[key]
             plt.boxplot(data)
             plt.xlabel('eval-run')
