@@ -54,7 +54,6 @@ class VPG:
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 shared_policy_value_nets = False,
-                c1=1.2,
                 device= torch.device('cpu')) -> None:
         """ 
         ### pls read the notes at the bottom
@@ -155,7 +154,6 @@ class VPG:
         self.device = device
         self.eval_episode = eval_episode
         self.shared_nets = shared_policy_value_nets
-        self.c1 = c1
 
         # required inits
         self._initBookKeeping()

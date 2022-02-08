@@ -2,6 +2,7 @@ from copy import deepcopy
 from time import perf_counter
 from typing import Union
 
+import os
 import gym
 from numpy.core.fromnumeric import mean
 import torch
@@ -50,6 +51,7 @@ class DQN:
                 printFreq = 50,
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
+                snapshot_dir = None,
                 device= torch.device('cpu')) -> None:
         '''
         # Psss note the notes at the bottom too.
@@ -108,6 +110,8 @@ class DQN:
 
         evalExplortionStrategy: strategy to be used for evalutation : default greedy-strategy
 
+        snapshot: path to the directory to save models every print episode
+
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
         NOTE: assumes the keys as ['state', 'action', 'reward', 'nextState', 'done'] in the sample dict from replayBuffer
@@ -148,6 +152,7 @@ class DQN:
         self.device = device
         self.printFreq = printFreq
         self.eval_episode = eval_episode
+        self.snapshot_dir = snapshot_dir
 
         # required inits
         self.target_model.eval()
@@ -160,6 +165,8 @@ class DQN:
         else:
             self.evalExplortionStrategy = evalExplortionStrategy
 
+        if snapshot_dir and not os.path.exists(snapshot_dir):
+            os.makedirs(snapshot_dir)
         
 
     def trainAgent(self, render=False):
@@ -247,6 +254,7 @@ class DQN:
                 print(f'episode: {episode} -> reward: {totalReward}, steps:{steps}, wall-time: {perf_counter()-timeStart:.2f}s')
                 if eval_done:
                     print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
+                self._save_snapshot()
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -258,6 +266,7 @@ class DQN:
             print(f'episode: {episode} -> reward: {totalReward}, steps:{steps} time-elasped: {perf_counter()-timeStart:.2f}s')
             if eval_done:
                 print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
+            self._save_snapshot()
 
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    
@@ -511,3 +520,9 @@ class DQN:
             'train': self.trainBook,
             'eval': self.evalBook
         }
+
+
+    def _save_snapshot(self, episode):
+        if not self.snapshot_dir: return
+        torch.save(self.online_model, f'{self.snapshot_dir}/onlinemodel_{episode}.pth')
+        torch.save(self.target_model, f'{self.snapshot_dir}/targetmodel_{episode}.pth')
