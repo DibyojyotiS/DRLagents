@@ -524,5 +524,7 @@ class DQN:
 
     def _save_snapshot(self, episode):
         if not self.snapshot_dir: return
-        torch.save(self.online_model, f'{self.snapshot_dir}/onlinemodel_{episode}.pth')
-        torch.save(self.target_model, f'{self.snapshot_dir}/targetmodel_{episode}.pth')
+        torch.save(self.online_model.state_dict(), 
+                    f'{self.snapshot_dir}/onlinemodel_weights_episode_{episode}.pth')
+        torch.save(self.target_model.state_dict(), 
+                    f'{self.snapshot_dir}/targetmodel_weights_episode_{episode}.pth')
