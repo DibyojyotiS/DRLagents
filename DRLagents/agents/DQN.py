@@ -254,7 +254,7 @@ class DQN:
                 print(f'episode: {episode} -> reward: {totalReward}, steps:{steps}, wall-time: {perf_counter()-timeStart:.2f}s')
                 if eval_done:
                     print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
-                self._save_snapshot()
+                self._save_snapshot(episode)
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -266,7 +266,7 @@ class DQN:
             print(f'episode: {episode} -> reward: {totalReward}, steps:{steps} time-elasped: {perf_counter()-timeStart:.2f}s')
             if eval_done:
                 print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
-            self._save_snapshot()
+            self._save_snapshot(episode)
 
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    
