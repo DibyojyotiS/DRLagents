@@ -1,6 +1,7 @@
 # Reinforce with baseline (VPG) is implemented here 
 # This particular version also uses entropy in the policy loss
 
+import os
 from copy import deepcopy
 from time import perf_counter
 from typing import Union
@@ -54,6 +55,7 @@ class VPG:
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 shared_policy_value_nets = False,
+                snapshot_dir = None,
                 device= torch.device('cpu')) -> None:
         """ 
         ### pls read the notes at the bottom
@@ -116,6 +118,8 @@ class VPG:
 
         shared_policy_value_nets: whether the policy and value nets share some parameters, in this case the policy and value-loss
                                     are combined together as: policy-loss + c1 * value-loss
+        
+        snapshot_dir: path to the directory to save models every print episode
 
         # Implementation notes:\n
         NOTE: policy_model maps the states to action log-probablities
@@ -154,6 +158,7 @@ class VPG:
         self.device = device
         self.eval_episode = eval_episode
         self.shared_nets = shared_policy_value_nets
+        self.snapshot_dir = snapshot_dir
 
         # required inits
         self._initBookKeeping()
@@ -162,7 +167,10 @@ class VPG:
             self.evalExplortionStrategy = greedyAction(self.policy_model, outputs_LogProbs=True)
             print("Using trainExplortionStrategy as evalExplortionStrategy.")
         else:
-            self.evalExplortionStrategy = evalExplortionStrategy      
+            self.evalExplortionStrategy = evalExplortionStrategy 
+
+        if snapshot_dir and not os.path.exists(snapshot_dir):
+            os.makedirs(snapshot_dir) 
 
 
     def trainAgent(self, render=False):
@@ -197,6 +205,7 @@ class VPG:
                 print(f'episode: {episode} -> reward: {totalReward}, steps:{total_steps} time-elasped: {perf_counter()-timeStart:.2f}s')
                 if eval_done:
                     print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
+                self._save_snapshot(episode)
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -208,6 +217,7 @@ class VPG:
             print(f'episode: {episode} -> reward: {totalReward}, steps:{total_steps} time-elasped: {perf_counter()-timeStart:.2f}s')
             if eval_done:
                 print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
+            self._save_snapshot(episode)
 
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - timeStart,'s')    
@@ -498,3 +508,11 @@ class VPG:
             'train': self.trainBook,
             'eval': self.evalBook
         }
+
+
+    def _save_snapshot(self, episode):
+        if not self.snapshot_dir: return
+        torch.save(self.policy_model.state_dict(), 
+                    f'{self.snapshot_dir}/policy_model_weights_episode_{episode}.pth')
+        torch.save(self.value_model.state_dict(), 
+                    f'{self.snapshot_dir}/value_model_weights_episode_{episode}.pth')

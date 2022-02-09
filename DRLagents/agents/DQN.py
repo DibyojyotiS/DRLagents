@@ -110,7 +110,7 @@ class DQN:
 
         evalExplortionStrategy: strategy to be used for evalutation : default greedy-strategy
 
-        snapshot: path to the directory to save models every print episode
+        snapshot_dir: path to the directory to save models every print episode
 
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
@@ -251,7 +251,7 @@ class DQN:
 
             # show progress output
             if episode % self.printFreq == 0:
-                print(f'episode: {episode} -> reward: {totalReward}, steps:{steps}, wall-time: {perf_counter()-timeStart:.2f}s')
+                print(f'episode: {episode} -> reward: {totalReward}, steps:{steps}, time-elasped: {perf_counter()-timeStart:.2f}s')
                 if eval_done:
                     print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
                 self._save_snapshot(episode)
