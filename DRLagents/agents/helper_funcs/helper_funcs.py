@@ -54,5 +54,5 @@ def make_transitions(trajectory, state, action, nextState):
     transitions: list of state-transitions of form [state, action, reward, next-state, done]
     '''
     reward = sum([r for o,i,r,d in trajectory])
-    done = any([d for o,i,r,d in trajectory])
+    done = trajectory[-1][3]
     return [[state, action, reward, nextState, done]]
