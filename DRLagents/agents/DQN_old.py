@@ -9,7 +9,7 @@ import torch
 from torch import nn
 from torch import optim
 
-from DRLagents.agents.helper_funcs.helper_funcs import clip_grads, make_transitions
+from DRLagents.agents.helper_funcs.helper_funcs import clip_grads
 from DRLagents.explorationStrategies.greedyStrategy import greedyAction
 from .helper_funcs import polyak_update
 
@@ -34,8 +34,7 @@ class DQN:
                 batchSize:int,
 
                 # optional training necessities
-                make_state = lambda trajectory: trajectory[-1][0],
-                make_transitions = make_transitions,
+                make_state = lambda listOfObs, listOfInfos: listOfObs[-1],
                 gamma=0.8,
                 MaxTrainEpisodes = 500,
                 MaxStepsPerEpisode = None,
@@ -73,17 +72,8 @@ class DQN:
 
         ## optional training necessities
         
-        make_state: function that takes a trajectory (list of [observation, info, reward, done]) to make a state.
-                    This function should handle info, reward, done as Nones, since gym.env.reset doesnot return info.
-                    Should handle trajectoru of variable lengths.
-
-        make_transitions: creates a list of state-transitions of the form [state, action, reward, next-state, done]
-                            Inputs are- trajectory, state, action, nextState
-                                trajectory: which is a list of [observation, info, reward, done]
-                                state: the state before the begenning of the frame-skipping
-                                action: the action used during the frame-skipping
-                                nextState: the state after the frame-skipping
-                            Should handle trajectories of variable lengths.
+        make_state: function that takes in list of observatons and infos from env.step to make a state.
+                    This function should handle info as list of Nones, since gym.env.reset doesnot return info.
         
         gamma: the discount factor
         
@@ -146,7 +136,6 @@ class DQN:
         self.target_model = deepcopy(model)
         self.gamma = gamma
         self.make_state = make_state
-        self.make_transitions = make_transitions
         self.MaxTrainEpisodes = MaxTrainEpisodes
         self.MaxStepsPerEpisode = MaxStepsPerEpisode
         self.lossfn = loss
@@ -199,21 +188,21 @@ class DQN:
             totalReward = 0
             totalLoss = 0
 
-            state = self.make_state([[observation,info,None,done]])
+            # user defines this func to make a state from a list of observations and infos
+            state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
+            state = torch.tensor(state, dtype=torch.float32, device=self.device)
 
             while not done:
 
                 # take action
-                action = self.trainExplortionStrategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
+                action = self.trainExplortionStrategy.select_action(state)
 
                 # repeat the action skipStep number of times
-                nextState, trajectory, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, action, accumulatedReward, done = self._astensor(nextState, action, accumulatedReward, done)
 
-                # make transitions and push observation in replay buffer
-                transitions = self.make_transitions(trajectory, state, action, nextState)
-                for _state, _action, _reward, _nextState, _done in transitions:
-                    _state, _action, _reward, _nextState, _done = self._astensor(_state, _action, _reward, _nextState, _done)
-                    self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
+                # push observation in replay buffer
+                self.replayBuffer.store(state, action, accumulatedReward, nextState, done)
 
                 # optimize model
                 if not self.optimize_at_end and steps % self.optimize_kth_step == 0:
@@ -304,7 +293,8 @@ class DQN:
             totalReward = 0
 
             # user defines this func to make a state from a list of observations and infos
-            state = self.make_state([[observation,info,None,done]])
+            state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
+            state = torch.tensor(state, dtype=torch.float32, device=self.device)
 
             # render
             if render: self.env.render()
@@ -312,10 +302,11 @@ class DQN:
             while not done:
 
                 # take action
-                action = evalExplortionStrategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
+                action = evalExplortionStrategy.select_action(state)
 
                 # repeat the action skipStep number of times
-                nextState, _, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, action, accumulatedReward, done = self._astensor(nextState, action, accumulatedReward, done)
 
                 steps += stepsTaken
                 totalReward += sumReward
@@ -443,37 +434,51 @@ class DQN:
         """ This executes the action, and handels frame skipping.
         In frame skipping the same action is repeated and the observations
         and infos are are stored in a list. The next state (where the agent 
-        lands) is computed using the make_state upon the trajectory which
-        is as described below.
+        lands) is computed using the make_state upon the list of observations
+        and infos.
+        
+        If the episode terminates within a frame skip then the list is padded 
+        using the last observed observation and info to maintain the same input
+        size. 
         
         this function returns:
         nextState: the next state
-        trajectory: a list of [observation, info, reward, done]
+        accumulatedReward: an accumulation of the rewards (currently sum)
         sumReward: the sum of the rewards seen 
         done:bool, whether the episode has ended 
         stepsTaken: the number of frames actually skipped - usefull when
                     the episode ends during a frame-skip """
 
+        accumulatedReward = 0 # the reward the model will see
         sumReward = 0 # to keep track of the total reward in the episode
         stepsTaken = 0 # to keep track of the total steps in the episode
 
-        trajectory = []
+        observationList = []
+        infoList = []
 
         for skipped_step in range(self.skipSteps):
 
             # repeate the action
             nextObservation, reward, done, info = self.env.step(action.item())
+
+            accumulatedReward += reward # reward * self.gamma**skipped_step
             sumReward += reward
             stepsTaken += 1
 
-            trajectory.append([nextObservation, info, reward, done])
+            observationList.append(nextObservation)
+            infoList.append(info)
 
-            if done: break
+            # if done pad the lists with the latest information
+            if done:
+                padLen = self.skipSteps-len(observationList)
+                observationList.extend([nextObservation for _ in range(padLen)])        
+                infoList.extend([info for _ in range(padLen)])
+                break # no more steps to skip
         
         # compute the next state 
-        nextState = self.make_state(trajectory)
+        nextState = self.make_state(observationList, infoList)
 
-        return nextState, trajectory, sumReward, done, stepsTaken
+        return nextState, accumulatedReward, sumReward, done, stepsTaken
 
 
     def _initBookKeeping(self):
@@ -502,13 +507,12 @@ class DQN:
         self.evalBook['wallTime'].append(wallTime)
 
 
-    def _astensor(self, state, action, reward, nextState, done):
-        state = torch.tensor(state, dtype=torch.float32, device=self.device, requires_grad=False)
+    def _astensor(self, nextState, action, reward, done):
         nextState = torch.tensor(nextState, dtype=torch.float32, device=self.device, requires_grad=False)
         action = torch.tensor([action], dtype=torch.int64, device=self.device, requires_grad=False) # extra axis for indexing purpose
         reward = torch.tensor([reward], dtype=torch.float32, device=self.device, requires_grad=False)
         done = torch.tensor([done], dtype=torch.int, device=self.device, requires_grad=False)
-        return state, action, reward, nextState, done
+        return nextState, action, reward, done
 
     
     def _returnBook(self):
