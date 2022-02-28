@@ -34,7 +34,7 @@ class DQN:
                 batchSize:int,
 
                 # optional training necessities
-                make_state = lambda trajectory: trajectory[-1][0],
+                make_state = lambda trajectory,action_taken: trajectory[-1][0],
                 make_transitions = make_transitions,
                 gamma=0.8,
                 MaxTrainEpisodes = 500,
@@ -73,8 +73,8 @@ class DQN:
 
         ## optional training necessities
         
-        make_state: function that takes a trajectory (list of [next-observation, info, action-taken, reward, done]) to make a state.
-                    This function should handle info, action-taken, reward, done as Nones, since gym.env.reset doesnot return info.
+        make_state: function that takes a trajectory (list of [next-observation, info, reward, done]) & action_taken to make a state.
+                    This function should handle info, action_taken, reward, done as Nones, since gym.env.reset doesnot return info.
                     Should handle trajectoru of variable lengths.
 
         make_transitions: creates a list of state-transitions of the form [state, action, reward, next-state, done]
@@ -199,15 +199,18 @@ class DQN:
             totalReward = 0
             totalLoss = 0
 
-            state = self.make_state([[observation,info,None,None,done]])
+            state = self.make_state([[observation,info,None,done]], None)
 
             while not done:
 
+                # take action
+                action = self.trainExplortionStrategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
+
                 # select action and repeat the action skipStep number of times
-                nextState, trajectory, sumReward, done, stepsTaken = self._take_steps(state, self.trainExplortionStrategy)
+                nextState, trajectory, sumReward, done, stepsTaken = self._take_steps(action)
 
                 # make transitions and push observation in replay buffer
-                transitions = self.make_transitions(trajectory, state, nextState)
+                transitions = self.make_transitions(trajectory, action, state, nextState)
                 for _state, _action, _reward, _nextState, _done in transitions:
                     _state, _action, _reward, _nextState, _done = self._astensor(_state, _action, _reward, _nextState, _done)
                     self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
@@ -301,15 +304,18 @@ class DQN:
             totalReward = 0
 
             # user defines this func to make a state from a list of observations and infos
-            state = self.make_state([[observation,info,None,done]])
+            state = self.make_state([[observation,info,None,done]], None)
 
             # render
             if render: self.env.render()
 
             while not done:
 
+                # take action
+                action = self.evalExplortionStrategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
+
                 # take action and repeat the action skipStep number of times
-                nextState, _, sumReward, done, stepsTaken = self._take_steps(state, self.evalExplortionStrategy)
+                nextState, _, sumReward, done, stepsTaken = self._take_steps(action)
 
                 steps += stepsTaken
                 totalReward += sumReward
@@ -433,7 +439,7 @@ class DQN:
         return states, actions, rewards, nextStates, dones, indices, sampleWeights
 
 
-    def _take_steps(self, state, strategy:Strategy):
+    def _take_steps(self, action):
         """ This selects an action using the strategy and state, and then
         executes the action, and handels frame skipping.In frame skipping 
         the same action is repeated and the observations and infos are 
@@ -448,9 +454,7 @@ class DQN:
         stepsTaken: the number of frames actually skipped - usefull when
                     the episode ends during a frame-skip """
 
-        # take action
-        action_taken = strategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
-        action_taken = action_taken.item()
+        action_taken = action.item()
 
         sumReward = 0 # to keep track of the total reward in the episode
         stepsTaken = 0 # to keep track of the total steps in the episode
@@ -464,12 +468,12 @@ class DQN:
             sumReward += reward
             stepsTaken += 1
 
-            trajectory.append([nextObservation, info, action_taken, reward, done])
+            trajectory.append([nextObservation, info, reward, done])
 
             if done: break
         
         # compute the next state 
-        nextState = self.make_state(trajectory)
+        nextState = self.make_state(trajectory, action_taken)
 
         return nextState, trajectory, sumReward, done, stepsTaken
 
