@@ -47,6 +47,7 @@ def make_transitions(trajectory, state, action, nextState):
     
     trajectory: which is a list of [next-observation, info, reward, done]
     state: the state before the begenning of the frame-skipping
+    action: the action repeated for frame-skipping
     nextState: the state after the frame-skipping
     
     returns:
