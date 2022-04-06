@@ -207,10 +207,10 @@ class DQN:
                 action = self.trainExplortionStrategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
 
                 # select action and repeat the action skipStep number of times
-                nextState, trajectory, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, skip_trajectory, sumReward, done, stepsTaken = self._take_steps(action)
 
                 # make transitions and push observation in replay buffer
-                transitions = self.make_transitions(trajectory, state, action, nextState)
+                transitions = self.make_transitions(skip_trajectory, state, action, nextState)
                 for _state, _action, _reward, _nextState, _done in transitions:
                     _state, _action, _reward, _nextState, _done = self._astensor(_state, _action, _reward, _nextState, _done)
                     self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
@@ -459,7 +459,7 @@ class DQN:
         sumReward = 0 # to keep track of the total reward in the episode
         stepsTaken = 0 # to keep track of the total steps in the episode
 
-        trajectory = []
+        skip_trajectory = []
 
         for skipped_step in range(self.skipSteps):
 
@@ -468,14 +468,14 @@ class DQN:
             sumReward += reward
             stepsTaken += 1
 
-            trajectory.append([nextObservation, info, reward, done])
+            skip_trajectory.append([nextObservation, info, reward, done])
 
             if done: break
         
         # compute the next state 
-        nextState = self.make_state(trajectory, action_taken)
+        nextState = self.make_state(skip_trajectory, action_taken)
 
-        return nextState, trajectory, sumReward, done, stepsTaken
+        return nextState, skip_trajectory, sumReward, done, stepsTaken
 
 
     def _initBookKeeping(self):
