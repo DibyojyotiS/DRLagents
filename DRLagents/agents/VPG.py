@@ -39,7 +39,7 @@ class VPG:
                 value_optimizer: Optimizer,
 
                 # optional training necessities
-                make_state = lambda listOfObs, listOfInfos: listOfObs[-1],
+                make_state = lambda trajectory,action_taken: trajectory[-1][0],
                 gamma = 0.99,
                 lamda = 0.8,
                 beta = 0.2,
@@ -78,9 +78,9 @@ class VPG:
 
         ## optional training necessities
 
-        make_state: function that takes in list of observatons and infos from
-                    env.step to make a state. This function should handle info
-                    as list of Nones, since gym.env.reset doesnot return info.
+        make_state: function that takes a trajectory (list of [next-observation, info, reward, done]) & action_taken to make a state.
+                    This function should handle info, action_taken, reward, done as Nones, since gym.env.reset doesnot return info.
+                    Should handle trajectoru of variable lengths.
 
         gamma: the discount factor
 
@@ -262,7 +262,7 @@ class VPG:
                 action = evalExplortionStrategy.select_action(state_tensor)
 
                 # repeat the action skipStep number of times
-                nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, sumReward, done, stepsTaken = self._take_steps(action)
 
                 steps += stepsTaken
                 totalReward += sumReward
@@ -366,13 +366,13 @@ class VPG:
             # take the action and handle frame skipping
             state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
             action, log_prob, entropy = self.trainExplortionStrategy.select_action(state_tensor, grad=True, logProb_n_entropy=True)
-            nextState, accumulatedReward, sumReward, done, stepsTaken = self._take_steps(action)
+            nextState, sumReward, done, stepsTaken = self._take_steps(action)
             # append to trajectory
             trajectory['state'].append(state)
             trajectory['action'].append(action)
             trajectory['log_prob'].append(log_prob) # log-probabliy of taken action
             trajectory['entropy'].append(entropy) # entropy of action probablities
-            trajectory['reward'].append(accumulatedReward)
+            trajectory['reward'].append(sumReward)
             # update counters
             total_reward+=sumReward
             total_steps+=stepsTaken
@@ -427,18 +427,17 @@ class VPG:
 
         this function returns:
         nextState: the next state
-        accumulatedReward: an accumulation of the rewards (currently sum)
         sumReward: the sum of the rewards seen 
         done:bool, whether the episode has ended 
         stepsTaken: the number of frames actually skipped - usefull when
                     the episode ends during a frame-skip """
 
-        accumulatedReward = 0 # the reward the model will see
+        action_taken = action.item()
+
         sumReward = 0 # to keep track of the total reward in the episode
         stepsTaken = 0 # to keep track of the total steps in the episode
 
-        observationList = []
-        infoList = []
+        skip_trajectory = []
 
         for skipped_step in range(self.skipSteps):
 
@@ -448,20 +447,14 @@ class VPG:
             sumReward += reward
             stepsTaken += 1
 
-            observationList.append(nextObservation)
-            infoList.append(info)
+            skip_trajectory.append([nextObservation, info, reward, done])
 
-            # if done pad the lists with the latest information
-            if done:
-                padLen = self.skipSteps-len(observationList)
-                observationList.extend([nextObservation for _ in range(padLen)])        
-                infoList.extend([info for _ in range(padLen)])
-                break # no more steps to skip
+            if done: break
         
         # compute the next state 
-        nextState = self.make_state(observationList, infoList)
+        nextState = self.make_state(skip_trajectory, action_taken)
 
-        return nextState, accumulatedReward, sumReward, done, stepsTaken
+        return nextState, sumReward, done, stepsTaken
 
 
     def _trajectory_to_tensor(self, trajectory:'dict[str, list]') -> 'dict[str, Tensor]':
