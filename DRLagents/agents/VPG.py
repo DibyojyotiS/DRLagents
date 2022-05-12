@@ -56,7 +56,7 @@ class VPG:
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 shared_policy_value_nets = False,
-                log_dir = '.logsVPG',
+                log_dir = '.logs',
                 save_snapshots = True,
                 device= torch.device('cpu')) -> None:
         """ 
