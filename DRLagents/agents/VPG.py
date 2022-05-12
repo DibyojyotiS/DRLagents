@@ -485,6 +485,12 @@ class VPG:
             'wallTime': []
         }
 
+        # open the logging csv files
+        self.trainBookCsv = open('trainBook.csv', 'w', encoding='utf-8')
+        self.evalBookCsv = open('evalBook.csv', 'w', encoding='utf-8')
+        self.trainBookCsv.write('episode, reward, steps, policy-loss, value-loss, wallTime, entropy\n')
+        self.evalBookCsv.write('episode, reward, steps, wallTime\n')
+
 
     def _performTrainBookKeeping(self, episode, reward, steps, policyLoss, valueLoss, wallTime, _entropy):
         self.trainBook['episode'].append(episode)
@@ -494,6 +500,7 @@ class VPG:
         self.trainBook['value-loss'].append(valueLoss)
         self.trainBook['wallTime'].append(wallTime)
         self.trainBook['entropy'].append(_entropy)
+        self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {policyLoss}, {valueLoss}, {wallTime}, {_entropy}\n')
 
 
     def _performEvalBookKeeping(self, episode, reward, steps, wallTime):
@@ -501,9 +508,13 @@ class VPG:
         self.evalBook['reward'].append(reward)
         self.evalBook['steps'].append(steps)
         self.evalBook['wallTime'].append(wallTime)
+        self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
 
     
     def _returnBook(self):
+        # close the log files
+        self.trainBookCsv.close()
+        self.evalBookCsv.close()
         return {
             'train': self.trainBook,
             'eval': self.evalBook

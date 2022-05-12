@@ -1,5 +1,6 @@
 from copy import deepcopy
 from time import perf_counter
+import time
 from typing import Union
 
 import os
@@ -120,7 +121,8 @@ class DQN:
 
         evalExplortionStrategy: strategy to be used for evalutation : default greedy-strategy
 
-        snapshot_dir: path to the directory to save models every print episode
+        snapshot_dir: path to the directory to save models every print episode 
+                        and where the training rewards will be saved
 
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
@@ -163,7 +165,7 @@ class DQN:
         self.device = device
         self.printFreq = printFreq
         self.eval_episode = eval_episode
-        self.snapshot_dir = snapshot_dir
+        self.snapshot_dir = os.path.join(snapshot_dir, '{}-{}-{} {}-{}-{}'.format(*time.gmtime()[0:6]))
 
         # required inits
         self.target_model.eval()
@@ -488,6 +490,13 @@ class DQN:
             'wallTime': []
         }
 
+        # open the logging csv files
+        self.trainBookCsv = open('trainBook.csv', 'w', encoding='utf-8')
+        self.evalBookCsv = open('evalBook.csv', 'w', encoding='utf-8')
+        self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
+        self.evalBookCsv.write('episode, reward, steps, wallTime\n')
+
+
 
     def _performTrainBookKeeping(self, episode, reward, steps, loss, wallTime):
         self.trainBook['episode'].append(episode)
@@ -495,6 +504,8 @@ class DQN:
         self.trainBook['steps'].append(steps)
         self.trainBook['loss'].append(loss)
         self.trainBook['wallTime'].append(wallTime)
+        self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
+
 
 
     def _performEvalBookKeeping(self, episode, reward, steps, wallTime):
@@ -502,6 +513,7 @@ class DQN:
         self.evalBook['reward'].append(reward)
         self.evalBook['steps'].append(steps)
         self.evalBook['wallTime'].append(wallTime)
+        self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
 
 
     def _astensor(self, state, action, reward, nextState, done):
@@ -514,6 +526,9 @@ class DQN:
 
     
     def _returnBook(self):
+        # close the log files
+        self.trainBookCsv.close()
+        self.evalBookCsv.close()
         return {
             'train': self.trainBook,
             'eval': self.evalBook
