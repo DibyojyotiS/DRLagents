@@ -53,7 +53,8 @@ class DQN:
                 printFreq = 50,
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
-                snapshot_dir = None,
+                log_dir = '.logsVPG',
+                save_snapshots = True,
                 device= torch.device('cpu')) -> None:
         '''
         # Psss note the notes at the bottom too.
@@ -121,8 +122,8 @@ class DQN:
 
         evalExplortionStrategy: strategy to be used for evalutation : default greedy-strategy
 
-        snapshot_dir: path to the directory to save models every print episode 
-                        and where the training rewards will be saved
+        log_dir: path to the directory to save logs and models every print episode (if save_snapshots=True)
+                set log_dir to None to save nothing
 
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
@@ -165,7 +166,12 @@ class DQN:
         self.device = device
         self.printFreq = printFreq
         self.eval_episode = eval_episode
-        self.snapshot_dir = os.path.join(snapshot_dir, '{}-{}-{} {}-{}-{}'.format(*time.gmtime()[0:6]))
+        self.save_snapshots = save_snapshots
+
+        self.log_dir = log_dir
+        if log_dir is not None:
+            self.log_dir = os.path.join(log_dir, '{}-{}-{} {}-{}-{}'.format(*time.gmtime()[0:6]))
+            if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
 
         # required inits
         self.target_model.eval()
@@ -178,9 +184,6 @@ class DQN:
         else:
             self.evalExplortionStrategy = evalExplortionStrategy
 
-        if snapshot_dir and not os.path.exists(snapshot_dir):
-            os.makedirs(snapshot_dir)
-        
 
     def trainAgent(self, render=False):
         """The main function to train the model"""
@@ -490,11 +493,12 @@ class DQN:
             'wallTime': []
         }
 
-        # open the logging csv files
-        self.trainBookCsv = open('trainBook.csv', 'w', encoding='utf-8')
-        self.evalBookCsv = open('evalBook.csv', 'w', encoding='utf-8')
-        self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
-        self.evalBookCsv.write('episode, reward, steps, wallTime\n')
+        if self.log_dir is not None:
+            # open the logging csv files
+            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'w', encoding='utf-8')
+            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'w', encoding='utf-8')
+            self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
+            self.evalBookCsv.write('episode, reward, steps, wallTime\n')
 
 
 
@@ -504,7 +508,8 @@ class DQN:
         self.trainBook['steps'].append(steps)
         self.trainBook['loss'].append(loss)
         self.trainBook['wallTime'].append(wallTime)
-        self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
+        if self.log_dir is not None:
+            self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
 
 
 
@@ -513,7 +518,8 @@ class DQN:
         self.evalBook['reward'].append(reward)
         self.evalBook['steps'].append(steps)
         self.evalBook['wallTime'].append(wallTime)
-        self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
+        if self.log_dir is not None:
+            self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
 
 
     def _astensor(self, state, action, reward, nextState, done):
@@ -526,9 +532,10 @@ class DQN:
 
     
     def _returnBook(self):
-        # close the log files
-        self.trainBookCsv.close()
-        self.evalBookCsv.close()
+        if self.log_dir is not None:
+            # close the log files
+            self.trainBookCsv.close()
+            self.evalBookCsv.close()
         return {
             'train': self.trainBook,
             'eval': self.evalBook
@@ -536,7 +543,7 @@ class DQN:
 
 
     def _save_snapshot(self, episode):
-        if not self.snapshot_dir: return
+        if not self.snapshot_dir or not self.save_snapshots: return
         torch.save(self.online_model.state_dict(), 
                     f'{self.snapshot_dir}/onlinemodel_weights_episode_{episode}.pth')
         torch.save(self.target_model.state_dict(), 

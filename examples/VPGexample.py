@@ -68,7 +68,7 @@ def run_VPG_on_cartpole_V0(evalRender=False):
     VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, 
                     policyOptimizer, valueOptimizer, gamma=0.99, lamda=0.8,
                     skipSteps=1, value_steps=10, MaxTrainEpisodes=500, 
-                    eval_episode=5, device=device)
+                    eval_episode=5, device=device, log_dir='.temp_stuffs/test', save_snapshots=False)
     trainHistory = VPGagent.trainAgent()
 
     # evaluate

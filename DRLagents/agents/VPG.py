@@ -4,6 +4,7 @@
 import os
 from copy import deepcopy
 from time import perf_counter
+import time
 from typing import Union
 
 import gym
@@ -55,7 +56,8 @@ class VPG:
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 shared_policy_value_nets = False,
-                snapshot_dir = None,
+                log_dir = '.logsVPG',
+                save_snapshots = True,
                 device= torch.device('cpu')) -> None:
         """ 
         ### pls read the notes at the bottom
@@ -119,7 +121,8 @@ class VPG:
         shared_policy_value_nets: whether the policy and value nets share some parameters, in this case the policy and value-loss
                                     are combined together as: policy-loss + c1 * value-loss
         
-        snapshot_dir: path to the directory to save models every print episode
+        log_dir: path to the directory to save logs and models every print episode (if save_snapshots=True)
+                set log_dir to None to save nothing
 
         # Implementation notes:\n
         NOTE: policy_model maps the states to action log-probablities
@@ -158,7 +161,12 @@ class VPG:
         self.device = device
         self.eval_episode = eval_episode
         self.shared_nets = shared_policy_value_nets
-        self.snapshot_dir = snapshot_dir
+        self.save_snapshots = save_snapshots
+
+        self.log_dir = log_dir
+        if log_dir is not None:
+            self.log_dir = os.path.join(log_dir, '{}-{}-{} {}-{}-{}'.format(*time.gmtime()[0:6]))
+            if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
 
         # required inits
         self._initBookKeeping()
@@ -168,9 +176,6 @@ class VPG:
             print("Using trainExplortionStrategy as evalExplortionStrategy.")
         else:
             self.evalExplortionStrategy = evalExplortionStrategy 
-
-        if snapshot_dir and not os.path.exists(snapshot_dir):
-            os.makedirs(snapshot_dir) 
 
 
     def trainAgent(self, render=False):
@@ -485,11 +490,12 @@ class VPG:
             'wallTime': []
         }
 
-        # open the logging csv files
-        self.trainBookCsv = open('trainBook.csv', 'w', encoding='utf-8')
-        self.evalBookCsv = open('evalBook.csv', 'w', encoding='utf-8')
-        self.trainBookCsv.write('episode, reward, steps, policy-loss, value-loss, wallTime, entropy\n')
-        self.evalBookCsv.write('episode, reward, steps, wallTime\n')
+        if self.log_dir is not None:
+            # open the logging csv files
+            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'w', encoding='utf-8')
+            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'w', encoding='utf-8')
+            self.trainBookCsv.write('episode, reward, steps, policy-loss, value-loss, wallTime, entropy\n')
+            self.evalBookCsv.write('episode, reward, steps, wallTime\n')
 
 
     def _performTrainBookKeeping(self, episode, reward, steps, policyLoss, valueLoss, wallTime, _entropy):
@@ -500,7 +506,8 @@ class VPG:
         self.trainBook['value-loss'].append(valueLoss)
         self.trainBook['wallTime'].append(wallTime)
         self.trainBook['entropy'].append(_entropy)
-        self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {policyLoss}, {valueLoss}, {wallTime}, {_entropy}\n')
+        if self.log_dir is not None:
+            self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {policyLoss}, {valueLoss}, {wallTime}, {_entropy}\n')
 
 
     def _performEvalBookKeeping(self, episode, reward, steps, wallTime):
@@ -508,13 +515,15 @@ class VPG:
         self.evalBook['reward'].append(reward)
         self.evalBook['steps'].append(steps)
         self.evalBook['wallTime'].append(wallTime)
-        self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
+        if self.log_dir is not None:
+            self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
 
     
     def _returnBook(self):
-        # close the log files
-        self.trainBookCsv.close()
-        self.evalBookCsv.close()
+        if self.log_dir is not None:
+            # close the log files
+            self.trainBookCsv.close()
+            self.evalBookCsv.close()
         return {
             'train': self.trainBook,
             'eval': self.evalBook
@@ -522,8 +531,8 @@ class VPG:
 
 
     def _save_snapshot(self, episode):
-        if not self.snapshot_dir: return
+        if not self.log_dir or not self.save_snapshots: return
         torch.save(self.policy_model.state_dict(), 
-                    f'{self.snapshot_dir}/policy_model_weights_episode_{episode}.pth')
+                    f'{self.log_dir}/policy_model_weights_episode_{episode}.pth')
         torch.save(self.value_model.state_dict(), 
-                    f'{self.snapshot_dir}/value_model_weights_episode_{episode}.pth')
+                    f'{self.log_dir}/value_model_weights_episode_{episode}.pth')
