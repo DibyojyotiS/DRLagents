@@ -6,7 +6,7 @@ import sys, os
 class StdoutLogger(object):
     "Lumberjack class - duplicates sys.stdout to a log file and it's okay"
     #source: https://stackoverflow.com/q/616645
-    def __init__(self, filename="logout.txt", mode="a", buff=0):
+    def __init__(self, filename="logout.txt", mode="a", buff=1):
         head,_ = os.path.split(filename)
         if len(head)>0 and not os.path.exists(head): os.makedirs(head)
         self.stdout = sys.stdout
