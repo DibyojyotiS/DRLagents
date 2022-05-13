@@ -54,6 +54,7 @@ class DQN:
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 log_dir = '.logs',
+                user_printFn = lambda : None,
                 save_snapshots = True,
                 device= torch.device('cpu')) -> None:
         '''
@@ -125,6 +126,10 @@ class DQN:
         log_dir: path to the directory to save logs and models every print episode (if save_snapshots=True)
                 set log_dir to None to save nothing
 
+        user_printFn: user provides this function to print user stuff (called every printFreq episode)
+
+        save_snapshots: see log_dir
+
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
         NOTE: assumes the keys as ['state', 'action', 'reward', 'nextState', 'done'] in the sample dict from replayBuffer
@@ -167,6 +172,7 @@ class DQN:
         self.printFreq = printFreq
         self.eval_episode = eval_episode
         self.save_snapshots = save_snapshots
+        self.user_printFn = user_printFn
 
         self.log_dir = log_dir
         if log_dir is not None:
@@ -268,9 +274,9 @@ class DQN:
             # show progress output
             if episode % self.printFreq == 0:
                 print(f'episode: {episode} -> reward: {totalReward}, steps:{steps}, time-elasped: {perf_counter()-timeStart:.2f}s')
-                if eval_done:
-                    print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
+                if eval_done: print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
                 self._save_snapshot(episode)
+                self.user_printFn() # call the user-printing function
 
             # early breaking
             if totalReward >= self.breakAtReward:
