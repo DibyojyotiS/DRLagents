@@ -53,7 +53,7 @@ class DQN:
                 printFreq = 50,
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
-                log_dir = '.logs',
+                log_dir = '.temp/logs',
                 user_printFn = lambda : None,
                 save_snapshots = True,
                 device= torch.device('cpu')) -> None:
