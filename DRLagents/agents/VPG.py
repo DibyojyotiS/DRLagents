@@ -56,7 +56,7 @@ class VPG:
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 shared_policy_value_nets = False,
-                log_dir = '.temp/logs',
+                log_dir = '.temp',
                 user_printFn = lambda : None,
                 save_snapshots = True,
                 device= torch.device('cpu')) -> None:
@@ -171,6 +171,7 @@ class VPG:
 
         self.log_dir = log_dir
         if log_dir is not None:
+            self.log_dir = os.path.join(self.log_dir, 'trainLogs')
             if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
 
         # required inits
