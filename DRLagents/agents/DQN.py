@@ -501,8 +501,8 @@ class DQN:
 
         if self.log_dir is not None:
             # open the logging csv files
-            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'w', encoding='utf-8',1)
-            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'w', encoding='utf-8',1)
+            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'w', 1, encoding='utf-8')
+            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'w', 1, encoding='utf-8')
             self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
             self.evalBookCsv.write('episode, reward, steps, wallTime\n')
 
