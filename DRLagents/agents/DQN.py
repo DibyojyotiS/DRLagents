@@ -1,6 +1,5 @@
 from copy import deepcopy
 from time import perf_counter
-import time
 from typing import Union
 
 import os
@@ -176,7 +175,6 @@ class DQN:
 
         self.log_dir = log_dir
         if log_dir is not None:
-            self.log_dir = os.path.join(log_dir, '{}-{}-{} {}-{}-{}'.format(*time.gmtime()[0:6]))
             if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
 
         # required inits

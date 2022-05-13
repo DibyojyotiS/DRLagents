@@ -57,6 +57,7 @@ class VPG:
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 shared_policy_value_nets = False,
                 log_dir = '.temp/logs',
+                user_printFn = lambda : None,
                 save_snapshots = True,
                 device= torch.device('cpu')) -> None:
         """ 
@@ -124,6 +125,10 @@ class VPG:
         log_dir: path to the directory to save logs and models every print episode (if save_snapshots=True)
                 set log_dir to None to save nothing
 
+        user_printFn: user provides this function to print user stuff (called every printFreq episode)
+
+        save_snapshots: see log_dir
+
         # Implementation notes:\n
         NOTE: policy_model maps the states to action log-probablities
         NOTE: It is not recommended to share layers between value and policy model for this implementation of VPG.
@@ -162,10 +167,10 @@ class VPG:
         self.eval_episode = eval_episode
         self.shared_nets = shared_policy_value_nets
         self.save_snapshots = save_snapshots
+        self.user_printFn = user_printFn
 
         self.log_dir = log_dir
         if log_dir is not None:
-            self.log_dir = os.path.join(log_dir, '{}-{}-{} {}-{}-{}'.format(*time.gmtime()[0:6]))
             if not os.path.exists(self.log_dir): os.makedirs(self.log_dir)
 
         # required inits
@@ -211,6 +216,7 @@ class VPG:
                 if eval_done:
                     print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
                 self._save_snapshot(episode)
+                self.user_printFn() # call the user-printing function
 
             # early breaking
             if totalReward >= self.breakAtReward:
