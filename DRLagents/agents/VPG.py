@@ -256,14 +256,14 @@ class VPG:
             totalReward = 0
 
             # user defines this func to make a state from a list of observations and infos
-            state = self.make_state([observation for _ in range(self.skipSteps)], [info for _ in range(self.skipSteps)])
+            state = self.make_state([[observation,info,None,done]], None)
 
             # render
             if render: self.env.render()
 
             while not done:
 
-                state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
+                state_tensor = torch.tensor([state], dtype=torch.float32, device=self.device)
 
                 # take action
                 action = evalExplortionStrategy.select_action(state_tensor)
@@ -361,17 +361,17 @@ class VPG:
 
         done = False
         observation = self.env.reset()
+        info = None # no initial info from gym.Env.reset
 
         # render
         if render: self.env.render()
 
         # user defines this func to make a state from a list of observations and infos
-        state = self.make_state([observation for _ in range(self.skipSteps)], 
-                                [None for _ in range(self.skipSteps)])
+        state = self.make_state([[observation,info,None,done]], None)
         
         while not done:
             # take the action and handle frame skipping
-            state_tensor = torch.tensor(state, dtype=torch.float32, device=self.device)
+            state_tensor = torch.tensor([state], dtype=torch.float32, device=self.device)
             action, log_prob, entropy = self.trainExplortionStrategy.select_action(state_tensor, grad=True, logProb_n_entropy=True)
             nextState, sumReward, done, stepsTaken = self._take_steps(action)
             # append to trajectory
@@ -450,7 +450,6 @@ class VPG:
 
             # repeate the action
             nextObservation, reward, done, info = self.env.step(action.item())
-            accumulatedReward += reward # reward * self.gamma**skipped_step
             sumReward += reward
             stepsTaken += 1
 
@@ -492,8 +491,8 @@ class VPG:
 
         if self.log_dir is not None:
             # open the logging csv files
-            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'w', encoding='utf-8')
-            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'w', encoding='utf-8')
+            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'w', 1, encoding='utf-8')
+            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'w', 1, encoding='utf-8')
             self.trainBookCsv.write('episode, reward, steps, policy-loss, value-loss, wallTime, entropy\n')
             self.evalBookCsv.write('episode, reward, steps, wallTime\n')
 

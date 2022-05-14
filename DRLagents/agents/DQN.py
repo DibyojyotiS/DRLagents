@@ -214,7 +214,7 @@ class DQN:
             while not done:
 
                 # take action
-                action = self.trainExplortionStrategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
+                action = self.trainExplortionStrategy.select_action(torch.tensor([state], dtype=torch.float32, device=self.device))
 
                 # select action and repeat the action skipStep number of times
                 nextState, skip_trajectory, sumReward, done, stepsTaken = self._take_steps(action)
@@ -322,7 +322,7 @@ class DQN:
             while not done:
 
                 # take action
-                action = self.evalExplortionStrategy.select_action(torch.tensor(state, dtype=torch.float32, device=self.device))
+                action = self.evalExplortionStrategy.select_action(torch.tensor([state], dtype=torch.float32, device=self.device))
 
                 # take action and repeat the action skipStep number of times
                 nextState, _, sumReward, done, stepsTaken = self._take_steps(action)
