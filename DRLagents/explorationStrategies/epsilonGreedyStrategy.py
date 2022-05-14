@@ -12,7 +12,7 @@ from .helper_funcs import entropy
 # training strategies like the DQN, or alternatively the same model that would be trained can be sent here
 
 class epsilonGreedyAction(Strategy):
-    '''decays epsilon to 1/e of initial - final in decaySteps.
+    '''decays epsilon from initial to final in decaySteps.
         doesnot decay epsilon if decaySteps is None'''
 
     def __init__(self, model: nn.Module, epsilon=0.5, finalepsilon=None, 
@@ -29,6 +29,8 @@ class epsilonGreedyAction(Strategy):
         self.episode = 0
         self.output_shape = None # will be updated lazily
         self.device = None # will be updated lazily
+        if not (self.decaySteps is None or self.finalepsilon is None):
+            self.decay_factor = (np.math.log(epsilon) - np.math.log(finalepsilon))/decaySteps
 
 
     def select_action(self, state:Tensor, 
@@ -78,7 +80,7 @@ class epsilonGreedyAction(Strategy):
     def decay(self):
         if self.decaySteps is None or self.finalepsilon is None: return
         self.episode += 1
-        self.epsilon = self.finalepsilon + (self.initepsilon-self.finalepsilon)*np.exp(-1 * self.episode/self.decaySteps)
+        self.epsilon = self.initepsilon*np.exp(-self.decay_factor*self.episode)
 
 
     def _lazy_init_details(self, model:nn.Module, state:Tensor):
