@@ -100,7 +100,15 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
 
     def sample(self, batchSize:int):
-
+        """ samples a batchSize number of experiences and returns
+        a tupple (samples, indices, weights)
+        
+        sample: {  'state':tf.Tensor, 'action':tf.Tensor, 'reward':tf.Tensor, 
+                    'nextState':tf.Tensor, 'done':tf.Tensor} 
+        indices: the sampled indices
+        weights: normalized importance sampling weights
+        
+         """  
         # sample the buffer according to the priorities
         indices = self._numpy_parallized_weighted_sampling(batchSize) \
                     if self.numpy_parallelized else self._weighted_sampling(batchSize)
