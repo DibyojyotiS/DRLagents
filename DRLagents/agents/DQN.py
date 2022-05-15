@@ -506,7 +506,6 @@ class DQN:
             self.evalBookCsv.write('episode, reward, steps, wallTime\n')
 
 
-
     def _performTrainBookKeeping(self, episode, reward, steps, loss, wallTime):
         self.trainBook['episode'].append(episode)
         self.trainBook['reward'].append(reward)
@@ -515,7 +514,6 @@ class DQN:
         self.trainBook['wallTime'].append(wallTime)
         if self.log_dir is not None:
             self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
-
 
 
     def _performEvalBookKeeping(self, episode, reward, steps, wallTime):
