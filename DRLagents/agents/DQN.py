@@ -41,6 +41,7 @@ class DQN:
                 MaxStepsPerEpisode = None,
                 loss = weighted_MSEloss,
                 update_freq = 5,
+                update_kth_step = None,
                 optimize_kth_step = 1,
                 num_gradient_steps = 1,
 
@@ -96,20 +97,22 @@ class DQN:
         loss: The loss will be called as loss(Qestimate, td_target, weights=sampleWeights) 
                 if the replayBuffer outputs sampleWeights, otherwise as loss(Qestimate, td_target).
                 For weighted_loss examples look in DRLagents.utils.weightedLosses
-                
-        update_freq: target model is updated every update_freq episodes
 
-        optimize_kth_step: the online model is update after every kth step (action). 
+        skipSteps: the number of steps to repeate the previous action (model not optimized at skipped steps)
+
+        update_freq: if not None, the target model is updated every update_freq episode
+        update_kth_step: if not None, the target model is updated every kth new action choosen
+
+        optimize_kth_step: the online model is update after every kth new action (i.e. steps excluding skip-step). 
                             To train the online model only at the end of an episode set this to -1
 
         num_gradient_steps: the number of gradient updates every optimize_kth_step.
 
 
         ## miscellaneous 
-
-        skipSteps: the number of steps to repeate the previous action (model not optimized at skipped steps)
         
-        polyak_average: whether to do the exponential varsion of polyak-avaraging until the update of target model
+        polyak_average: whether to do the polyak-avaraging of target model as polyak_tau*online_model + (1-polyak_tau)*target_model
+                        if enabled, polyak-averaging will be done in every episode
         
         polyak_tau: the target model is updated according to tau*online_model + (1-tau)*target_model in every episode, 
                     the target_model is also updated to the online_model's weights every update_freq episode.
@@ -157,7 +160,8 @@ class DQN:
         self.MaxTrainEpisodes = MaxTrainEpisodes
         self.MaxStepsPerEpisode = MaxStepsPerEpisode
         self.lossfn = loss
-        self.update_freq = update_freq
+        self.update_freq_episode = update_freq
+        self.update_kth_step = update_kth_step
         self.replayBuffer = replayBuffer
         self.optimize_kth_step = optimize_kth_step
         self.num_gradient_steps = num_gradient_steps
@@ -205,6 +209,7 @@ class DQN:
             if render: self.env.render()
 
             # counters
+            k = 0 # count the number of calls to select-action
             steps = 0
             totalReward = 0
             totalLoss = 0
@@ -225,31 +230,31 @@ class DQN:
                     _state, _action, _reward, _nextState, _done = self._astensor(_state, _action, _reward, _nextState, _done)
                     self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
 
-                # optimize model
-                if not self.optimize_at_end and steps % self.optimize_kth_step == 0:
-                    loss = self._optimizeModel()
-                    totalLoss += loss
-
+                # update state and counters
+                state = nextState
                 steps += stepsTaken
                 totalReward += sumReward
+                k += 1
 
-                if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
-
-                # update state
-                state = nextState
-
+                # optimize model
+                if not self.optimize_at_end and k % self.optimize_kth_step == 0:
+                    totalLoss += self._optimizeModel()
+                
+                # if update_kth_step is given
+                if self.update_kth_step and k % self.update_kth_step == 0:
+                    self.target_model.load_state_dict(self.online_model.state_dict())
+                
                 # render
                 if render: self.env.render()
+                if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
 
-            # if required optimize at the episode end
-            if self.optimize_at_end:
-                totalLoss = self._optimizeModel()
+            # if required optimize at the episode
+            if self.optimize_at_end: totalLoss = self._optimizeModel()
 
             # update target model
-            if episode % self.update_freq == 0:
+            if self.update_freq_episode and episode % self.update_freq_episode == 0:
                 self.target_model.load_state_dict(self.online_model.state_dict())
-            elif self.polyak_average:
-                polyak_update(self.online_model, self.target_model, self.tau)
+            elif self.polyak_average: polyak_update(self.online_model, self.target_model, self.tau)
 
             # decay exploration strategy params
             self.trainExplortionStrategy.decay()
