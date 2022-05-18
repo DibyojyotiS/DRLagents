@@ -6,14 +6,15 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .Strategy import Strategy
-from .helper_funcs.helper_funcs import entropy
+from ..utils import printDict
+
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in
 # training strategies like the DQN, or alternatively the same model that would be trained can be sent here
 class softMaxAction(Strategy):
 
     def __init__(self, model: nn.Module, temperature=1, finaltemperature=None, 
-                    decaySteps=None, outputs_LogProbs=False) -> None:
+                    decaySteps=None, outputs_LogProbs=False, print_args=False) -> None:
         ''' decays temperature by 1/e of initial-final in decaySteps if not None 
 
         temperature: the initial temperature for gumbel softmax
@@ -29,6 +30,8 @@ class softMaxAction(Strategy):
                 distribution returned by the model. 
                 (corresponds to temperature=1, decaySteps=None)
         '''
+        if print_args: printDict(self.__class__.__name__, locals())
+
         self.model = model
         self.temperature = temperature
         self.init_temperature = temperature

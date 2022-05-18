@@ -7,6 +7,7 @@ from torch import Tensor, nn
 
 from .Strategy import Strategy
 from .helper_funcs import entropy
+from DRLagents.utils.helper_funcs import printDict
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in
 # training strategies like the DQN, or alternatively the same model that would be trained can be sent here
@@ -16,14 +17,17 @@ class epsilonGreedyAction(Strategy):
         doesnot decay epsilon if decaySteps is None'''
 
     def __init__(self, model: nn.Module, epsilon=0.5, finalepsilon=None, 
-                    decaySteps=None, outputs_LogProbs=False) -> None:
+                    decaySteps=None, outputs_LogProbs=False, 
+                    print_args=False) -> None:
+
+        if print_args: printDict(self.__class__.__name__, locals())
 
         self.model = model
+        self.outputs_LogProbs = outputs_LogProbs
         self.epsilon = epsilon
         self.initepsilon = epsilon
         self.finalepsilon = finalepsilon
         self.decaySteps = decaySteps
-        self.outputs_LogProbs = outputs_LogProbs
 
         # required inits
         self.episode = 0

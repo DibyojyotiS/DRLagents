@@ -17,7 +17,7 @@ from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
 
 from DRLagents.explorationStrategies.greedyStrategy import greedyAction
-
+from DRLagents.utils.helper_funcs import printDict
 
 class VPG:
     ''' ## Vanila Policy Gradient with GAE
@@ -59,7 +59,8 @@ class VPG:
                 log_dir = '.temp',
                 user_printFn = lambda : None,
                 save_snapshots = True,
-                device= torch.device('cpu')) -> None:
+                device= torch.device('cpu'),
+                print_args=False) -> None:
         """ 
         ### pls read the notes at the bottom
 
@@ -139,6 +140,8 @@ class VPG:
         NOTE: If episode terminates while skipping, the list is padded with the last observation and info
         NOTE: The models are not updated within the skipSteps steps.
         NOTE: value_model returns a single value for each state """
+
+        if print_args: printDict(self.__class__.__name__, locals())
 
         # training necessities
         self.env = env

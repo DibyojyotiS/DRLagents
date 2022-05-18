@@ -8,6 +8,7 @@ import torch
 from torch import Tensor
 
 from . import ReplayBuffer
+from ..utils import printDict
 
 
 class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
@@ -23,7 +24,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
-                bufferType='replace-min', beta_schedule=None, numpy_parallelized=False):
+                bufferType='replace-min', beta_schedule=None, numpy_parallelized=False, print_args=False):
         """
         alpha: interpolates from uniform sampling (alpha = 0) to full prioritized sampling (alpha = 1).
 
@@ -47,6 +48,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         """
 
         assert bufferType in ['circular', 'replace-min']
+        if print_args: printDict(self.__class__.__name__, locals())
 
         self.bufferSize = bufferSize
         self.alpha, self.beta_schedule = alpha, beta_schedule

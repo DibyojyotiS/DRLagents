@@ -6,6 +6,7 @@ from torch import Tensor, nn
 
 from .Strategy import Strategy
 from .helper_funcs import entropy
+from ..utils import printDict
 
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in
@@ -14,7 +15,8 @@ class greedyAction(Strategy):
     ''' selects an action greedly. The greedy strategy is 
     usually used in evaluation. '''
 
-    def __init__(self, model: nn.Module, outputs_LogProbs=False) -> None:
+    def __init__(self, model: nn.Module, outputs_LogProbs=False,print_args=False) -> None:
+        if print_args: printDict(self.__class__.__name__, locals())
         self.model = model
         self.outputs_LogProbs = outputs_LogProbs
 

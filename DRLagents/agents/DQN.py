@@ -16,6 +16,7 @@ from .helper_funcs import polyak_update
 from DRLagents.explorationStrategies import Strategy
 from DRLagents.replaybuffers import ReplayBuffer
 from DRLagents.utils.weightedLosses import weighted_MSEloss
+from DRLagents.utils.helper_funcs import printDict
 
 # things to discuss about skipping frames
 # 1. how to accumulate the rewards in the skipped frames? -> currently a cumulative (summed) reward
@@ -23,7 +24,8 @@ from DRLagents.utils.weightedLosses import weighted_MSEloss
 class DQN:
     """ This class implements the DQN training algorithm. \n
     For discrete action space.
-    One can use different optimizers, loss functions and replay buffers."""
+    One can use different optimizers, loss functions and replay buffers.
+    Also used as a Base class for DDQN """
 
     def __init__(self, 
                 # training necessities
@@ -55,7 +57,8 @@ class DQN:
                 log_dir = '.temp',
                 user_printFn = lambda : None,
                 save_snapshots = True,
-                device= torch.device('cpu')) -> None:
+                device= torch.device('cpu'), 
+                print_args=False) -> None:
         '''
         # Psss note the notes at the bottom too.
 
@@ -130,6 +133,8 @@ class DQN:
 
         save_snapshots: see log_dir
 
+        print_args: prints the names and values of the arguments (usefull for logging)
+
         # Implementation notes:\n
         NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
         NOTE: assumes the keys as ['state', 'action', 'reward', 'nextState', 'done'] in the sample dict from replayBuffer
@@ -142,6 +147,8 @@ class DQN:
         loss: Look in DRLagents.utils for examples of weighted losses. In case your buffer would ONLY output samples,
         feel free to use losses like torch.nn.MSELoss. Though all torch.nn losses may not be supported.
         '''
+
+        if print_args: printDict(self.__class__.__name__, locals())
 
         # basic
         self.online_model = model

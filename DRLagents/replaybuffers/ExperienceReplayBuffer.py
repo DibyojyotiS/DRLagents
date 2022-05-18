@@ -3,6 +3,7 @@ import random
 import torch
 
 from . import ReplayBuffer
+from ..utils import printDict
 
 
 class ExperienceReplayBuffer(ReplayBuffer):
@@ -13,10 +14,11 @@ class ExperienceReplayBuffer(ReplayBuffer):
         experiences.
     """
 
-    def __init__(self, bufferSize):
+    def __init__(self, bufferSize, print_args=False):
         """
         bufferSize: the size of the memory buffer.
         """
+        if print_args: printDict(self.__class__.__name__, locals())
         self.bufferSize = bufferSize
         self._tuppleDesc = ['state', 'action', 'reward', 'nextState', 'done']
         self.buffer = None
