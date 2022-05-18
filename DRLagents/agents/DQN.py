@@ -41,7 +41,6 @@ class DQN:
                 MaxStepsPerEpisode = None,
                 loss = weighted_MSEloss,
                 update_freq = 5,
-                update_kth_step = None,
                 optimize_kth_step = 1,
                 num_gradient_steps = 1,
 
@@ -101,7 +100,6 @@ class DQN:
         skipSteps: the number of steps to repeate the previous action (model not optimized at skipped steps)
 
         update_freq: if not None, the target model is updated every update_freq episode
-        update_kth_step: if not None, the target model is updated every kth new action choosen
 
         optimize_kth_step: the online model is update after every kth new action (i.e. steps excluding skip-step). 
                             To train the online model only at the end of an episode set this to -1
@@ -161,7 +159,6 @@ class DQN:
         self.MaxStepsPerEpisode = MaxStepsPerEpisode
         self.lossfn = loss
         self.update_freq_episode = update_freq
-        self.update_kth_step = update_kth_step
         self.replayBuffer = replayBuffer
         self.optimize_kth_step = optimize_kth_step
         self.num_gradient_steps = num_gradient_steps
@@ -239,10 +236,6 @@ class DQN:
                 # optimize model
                 if not self.optimize_at_end and k % self.optimize_kth_step == 0:
                     totalLoss += self._optimizeModel()
-                
-                # if update_kth_step is given
-                if self.update_kth_step and k % self.update_kth_step == 0:
-                    self.target_model.load_state_dict(self.online_model.state_dict())
                 
                 # render
                 if render: self.env.render()
