@@ -41,7 +41,7 @@ class DQN:
                 MaxStepsPerEpisode = None,
                 loss = weighted_MSEloss,
                 update_freq = 5,
-                optimize_kth_step = 1,
+                optimize_every_kth_action = 1,
                 num_gradient_steps = 1,
 
                 # miscellaneous
@@ -160,7 +160,7 @@ class DQN:
         self.lossfn = loss
         self.update_freq_episode = update_freq
         self.replayBuffer = replayBuffer
-        self.optimize_kth_step = optimize_kth_step
+        self.optimize_every_kth_action = optimize_every_kth_action
         self.num_gradient_steps = num_gradient_steps
         
         # miscellaneous args
@@ -182,7 +182,7 @@ class DQN:
         # required inits
         self.target_model.eval()
         self._initBookKeeping()
-        self.optimize_at_end = optimize_kth_step==-1
+        self.optimize_at_end = optimize_every_kth_action==-1
 
         if not evalExplortionStrategy:
             self.evalExplortionStrategy = greedyAction(self.online_model)
@@ -214,7 +214,6 @@ class DQN:
             state = self.make_state([[observation,info,None,done]], None)
 
             while not done:
-
                 # take action
                 action = self.trainExplortionStrategy.select_action(torch.tensor([state], dtype=torch.float32, device=self.device))
 
@@ -227,22 +226,16 @@ class DQN:
                     _state, _action, _reward, _nextState, _done = self._astensor(_state, _action, _reward, _nextState, _done)
                     self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
 
-                # update state and counters
+                # update state, counters and optimize model
                 state = nextState
-                steps += stepsTaken
-                totalReward += sumReward
-                k += 1
-
-                # optimize model
-                if not self.optimize_at_end and k % self.optimize_kth_step == 0:
-                    totalLoss += self._optimizeModel()
-                
-                # render
-                if render: self.env.render()
+                steps += stepsTaken; totalReward += sumReward; k += 1
+                if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: totalLoss += self._optimizeModel()
+                if render: self.env.render() # render
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
 
-            # if required optimize at the episode
-            if self.optimize_at_end: totalLoss = self._optimizeModel()
+            # if required optimize at the episode end and compute average loss
+            if self.optimize_at_end: average_loss = self._optimizeModel()
+            else: average_loss = totalLoss / (k//self.optimize_every_kth_action)
 
             # update target model
             if self.update_freq_episode and episode % self.update_freq_episode == 0:
@@ -256,7 +249,7 @@ class DQN:
             self.replayBuffer.update_params()
 
             # do train-book keeping
-            self._performTrainBookKeeping(episode, totalReward, steps, totalLoss, perf_counter()-timeStart)
+            self._performTrainBookKeeping(episode, totalReward, steps, average_loss, perf_counter()-timeStart)
 
             # evaluate the agent and do eval-book keeping
             eval_done=False
@@ -392,7 +385,7 @@ class DQN:
         which returns a scalar tensor representing the loss. If only the computation of loss has to 
         be modified then no need to modify _optimizeModel, modify the _compute_loss function 
 
-        returns the loss (as a float type - used only for plotting purposes)
+        returns the average-loss (as a float type - used only for plotting purposes)
         """
         
         if len(self.replayBuffer) < self.batchSize: return 0
@@ -417,7 +410,7 @@ class DQN:
 
             total_loss += loss.item()
 
-        return total_loss
+        return total_loss/self.num_gradient_steps
 
 
     def _split_sample(self, sample):
