@@ -235,7 +235,7 @@ class DQN:
 
             # if required optimize at the episode end and compute average loss
             if self.optimize_at_end: average_loss = self._optimizeModel()
-            else: average_loss = totalLoss * self.num_gradient_steps / (k//self.optimize_every_kth_action)
+            else: average_loss = totalLoss * self.num_gradient_steps / (1e-8 + k//self.optimize_every_kth_action)
 
             # update target model
             if self.update_freq_episode and episode % self.update_freq_episode == 0:
@@ -251,22 +251,18 @@ class DQN:
             # do train-book keeping
             self._performTrainBookKeeping(episode, totalReward, steps, average_loss, perf_counter()-timeStart)
 
-            # evaluate the agent and do eval-book keeping
-            eval_done=False
-            if self.eval_episode and (episode+1)%self.eval_episode == 0:
-                eval_info = self.evaluate(self.evalExplortionStrategy, verbose=False)
-                evalReward = mean(eval_info['rewards'])
-                evalSteps = mean(eval_info['steps'])
-                evalWallTime = mean(eval_info['wallTimes'])
-                self._performEvalBookKeeping(episode, evalReward, evalSteps, evalWallTime)
-                eval_done = True
-
             # show progress output
             if episode % self.printFreq == 0:
                 print(f'episode: {episode} -> reward: {totalReward}, steps:{steps}, time-elasped: {perf_counter()-timeStart:.2f}s')
-                if eval_done: print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
                 self._save_snapshot(episode)
                 self.user_printFn() # call the user-printing function
+
+            # evaluate the agent and do eval-book keeping
+            if self.eval_episode and (episode+1)%self.eval_episode == 0:
+                eval_info = self.evaluate(self.evalExplortionStrategy, verbose=False)
+                evalStats = [mean(eval_info[x]) for x in ['rewards','steps','wallTimes']]
+                self._performEvalBookKeeping(episode, *evalStats)
+                print(f'eval-episode: {episode} -> reward: {evalStats[0]}, steps: {evalStats[1]}, wall-time: {evalStats[2]}\n')
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -276,8 +272,6 @@ class DQN:
         # print the last episode if not already printed
         if episode % self.printFreq != 0:
             print(f'episode: {episode} -> reward: {totalReward}, steps:{steps} time-elasped: {perf_counter()-timeStart:.2f}s')
-            if eval_done:
-                print(f'eval-episode: {episode} -> reward: {evalReward}, steps: {evalSteps}, wall-time: {evalWallTime}')
             self._save_snapshot(episode)
 
         # just cuirious to know the total time spent...
