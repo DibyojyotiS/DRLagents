@@ -235,7 +235,9 @@ class DQN:
 
             # if required optimize at the episode end and compute average loss
             if self.optimize_at_end: average_loss = self._optimizeModel()
-            else: average_loss = totalLoss * self.num_gradient_steps / (1e-8 + k//self.optimize_every_kth_action)
+            else: 
+                if k < self.optimize_every_kth_action: print('REDUCE optimize_every_kth_action!!!')
+                average_loss = totalLoss * self.num_gradient_steps / (k//self.optimize_every_kth_action)
 
             # update target model
             if self.update_freq_episode and episode % self.update_freq_episode == 0:
