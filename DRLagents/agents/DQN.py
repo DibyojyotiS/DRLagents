@@ -8,6 +8,7 @@ from numpy.core.fromnumeric import mean
 import torch
 from torch import nn
 from torch import optim
+from torch.optim.optimizer import Optimizer
 
 from DRLagents.agents.helper_funcs.helper_funcs import clip_grads, make_transitions
 from DRLagents.explorationStrategies.greedyStrategy import greedyAction
@@ -31,7 +32,7 @@ class DQN:
                 # training necessities
                 env:gym.Env, model:nn.Module,
                 trainExplortionStrategy: Strategy,
-                optimizer: optim.Optimizer,
+                optimizer: Optimizer,
                 replayBuffer: ReplayBuffer,
                 batchSize:int,
 
