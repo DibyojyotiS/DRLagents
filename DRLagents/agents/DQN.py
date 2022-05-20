@@ -58,7 +58,8 @@ class DQN:
                 log_dir = '.temp',
                 user_printFn = lambda : None,
                 save_snapshots = True,
-                device= torch.device('cpu'), 
+                device= torch.device('cpu'),
+                float_dtype = torch.float32, 
                 print_args=False) -> None:
         '''
         # Psss note the notes at the bottom too.
@@ -134,6 +135,10 @@ class DQN:
 
         save_snapshots: see log_dir
 
+        device: the device the model is on
+
+        float_dtype: the torch float dtype to be used
+
         print_args: prints the names and values of the arguments (usefull for logging)
 
         # Implementation notes:\n
@@ -181,6 +186,7 @@ class DQN:
         self.eval_episode = eval_episode
         self.save_snapshots = save_snapshots
         self.user_printFn = user_printFn
+        self.float_dtype = float_dtype
 
         self.log_dir = log_dir
         if log_dir is not None:
@@ -223,7 +229,7 @@ class DQN:
 
             while not done:
                 # take action
-                action = self.trainExplortionStrategy.select_action(torch.tensor([state], dtype=torch.float32, device=self.device))
+                action = self.trainExplortionStrategy.select_action(torch.tensor([state], dtype=self.float_dtype, device=self.device))
 
                 # select action and repeat the action skipStep number of times
                 nextState, skip_trajectory, sumReward, done, stepsTaken = self._take_steps(action)
@@ -317,7 +323,7 @@ class DQN:
             while not done:
 
                 # take action
-                action = self.evalExplortionStrategy.select_action(torch.tensor([state], dtype=torch.float32, device=self.device))
+                action = self.evalExplortionStrategy.select_action(torch.tensor([state], dtype=self.float_dtype, device=self.device))
 
                 # take action and repeat the action skipStep number of times
                 nextState, _, sumReward, done, stepsTaken = self._take_steps(action)
@@ -428,7 +434,7 @@ class DQN:
             if type(sampleWeights) == torch.Tensor:
                 sampleWeights = sampleWeights.to(self.device)
             else:
-                sampleWeights = torch.tensor(sampleWeights, dtype=torch.float32, device=self.device)
+                sampleWeights = torch.tensor(sampleWeights, dtype=self.float_dtype, device=self.device)
         elif type(sample) == dict:
             ## expericence replay buffer with uniform sampling
             batch = sample
@@ -521,10 +527,10 @@ class DQN:
 
 
     def _astensor(self, state, action, reward, nextState, done):
-        state = torch.tensor(state, dtype=torch.float32, device=self.device, requires_grad=False)
-        nextState = torch.tensor(nextState, dtype=torch.float32, device=self.device, requires_grad=False)
+        state = torch.tensor(state, dtype=self.float_dtype, device=self.device, requires_grad=False)
+        nextState = torch.tensor(nextState, dtype=self.float_dtype, device=self.device, requires_grad=False)
         action = torch.tensor([action], dtype=torch.int64, device=self.device, requires_grad=False) # extra axis for indexing purpose
-        reward = torch.tensor([reward], dtype=torch.float32, device=self.device, requires_grad=False)
+        reward = torch.tensor([reward], dtype=self.float_dtype, device=self.device, requires_grad=False)
         done = torch.tensor([done], dtype=torch.int, device=self.device, requires_grad=False)
         return state, action, reward, nextState, done
 
