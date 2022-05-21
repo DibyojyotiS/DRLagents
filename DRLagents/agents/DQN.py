@@ -291,7 +291,8 @@ class DQN:
             self._save_snapshot(episode)
 
         # just cuirious to know the total time spent...
-        print("total time elasped:", perf_counter() - timeStart,'s')    
+        print("total time elasped:", perf_counter() - timeStart,'s')  
+        if self.save_snapshots: torch.save(optim.state_dict(), os.path.join(LOG_DIR,f'optimizer_state.pth'))  
         
         return self._returnBook()
 
