@@ -1,6 +1,5 @@
 # refer https://nn.labml.ai/rl/dqn/replay_buffer.html
 
-
 import random
 import numpy as np
 
@@ -53,6 +52,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         if print_args: printDict(self.__class__.__name__, locals())
 
         self.bufferSize = bufferSize
+        self.beta, self.beta_rate = beta, beta_rate
         self.alpha, self.beta_schedule = alpha, beta_schedule
         self.numpy_parallelized = numpy_parallelized
         self.replace_min =  bufferType == 'replace-min'
@@ -71,7 +71,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
         # define default beta schedule from beta and beta_rate if schedule not given
         if not beta_schedule:
-            self.beta_schedule = lambda episode: min(1, beta + episode*beta_rate)
+            self.beta_schedule = self._default_beta_schedule
 
         # init the beta and episode counter
         self.episode = 0 
@@ -80,7 +80,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     
     def store(self, state:Tensor, action:Tensor, 
                 reward:Tensor, nextState:Tensor, done:Tensor):
-        
+        """ store the experience-tupple: state, action, reward, nextState, done
+        in the priority-buffer at the index of the current minimum priority """
         # all should be tensors!!
         experienceTupple = [state, action, reward, nextState, done]
 
@@ -214,6 +215,9 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
     def _get_min_idx(self):
         return int(self._priority_min[1][1])
+
+    def _default_beta_schedule(self, episode):
+        return min(1, self.beta + episode*self.beta_rate)
 
     def __len__(self):
         return self.size

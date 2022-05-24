@@ -1,5 +1,6 @@
 # base class for replay buffers all replay buffers must have the functions store and sample
 
+import pickle
 import torch
 
 
@@ -50,3 +51,9 @@ class ReplayBuffer:
                                         requires_grad=False,
                                         device=experience[i].device) 
                         for i,x in enumerate(tuppleDesc)}
+
+
+    def save_to_disk(self, path):
+        """ save the replay-buffer to disk """
+        with open(path, 'wb') as f:
+            pickle.dump(self, f, pickle.HIGHEST_PROTOCOL)
