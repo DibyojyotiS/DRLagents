@@ -27,7 +27,7 @@ class DQN:
     def __init__(self, 
                 # training necessities
                 env:gym.Env, model:nn.Module,
-                trainExplortionStrategy: Strategy,
+                trainExplorationStrategy: Strategy,
                 optimizer: Optimizer,
                 replayBuffer: ReplayBuffer,
                 batchSize = 512,
@@ -177,7 +177,7 @@ class DQN:
         self.online_model = model
         self.target_model = deepcopy(model)
         self.env = env
-        self.trainExplorationStrategy = trainExplortionStrategy
+        self.trainExplorationStrategy = trainExplorationStrategy
         self.replayBuffer = replayBuffer
         self.lossfn = loss
         self.optimizer = optimizer
@@ -464,8 +464,9 @@ class DQN:
         if self.log_dir is not None:
             self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'a', 1, encoding='utf-8')
             self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'a', 1, encoding='utf-8')
-            self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
-            self.evalBookCsv.write('episode, reward, steps, wallTime\n')
+            if os.stat(os.path.join(self.log_dir, 'trainBook.csv')).st_size == 0:
+                self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
+                self.evalBookCsv.write('episode, reward, steps, wallTime\n')
 
     def _performTrainBookKeeping(self, episode, reward, steps, loss, wallTime):
         self.trainBook['episode'].append(episode)
@@ -554,7 +555,6 @@ class DQN:
             return book
 
         # reconstruct the books
-        print('\tReconstructing the trainBooks')
         self.trainBook = load_csvbook(f'{self.log_dir}/trainBook.csv')
         self.evalBook = load_csvbook(f'{self.log_dir}/evalBook.csv')
 
