@@ -177,7 +177,7 @@ class DQN:
         self.online_model = model
         self.target_model = deepcopy(model)
         self.env = env
-        self.trainExplortionStrategy = trainExplortionStrategy
+        self.trainExplorationStrategy = trainExplortionStrategy
         self.replayBuffer = replayBuffer
         self.lossfn = loss
         self.optimizer = optimizer
@@ -250,7 +250,7 @@ class DQN:
 
             while not done:
                 # take action
-                action = self.trainExplortionStrategy.select_action(self.online_model, 
+                action = self.trainExplorationStrategy.select_action(self.online_model, 
                             torch.tensor([state], dtype=self.float_dtype, device=self.device))
 
                 # select action and repeat the action skipStep number of times
@@ -281,7 +281,7 @@ class DQN:
             elif self.polyak_average: polyak_update(self.online_model, self.target_model, self.tau)
 
             # decay exploration strategy and replay buffer params
-            self.trainExplortionStrategy.decay()
+            self.trainExplorationStrategy.decay()
             self.replayBuffer.update_params()
 
             # do train-book keeping, print progress-output, eval-output, etc... & save stuff
@@ -532,8 +532,8 @@ class DQN:
                 with open(f'{path}/episode.txt', 'w') as f: f.write(f'{episode}')
                 torch.save(self.replayBuffer.state_dict(), f'{path}/replayBuffer_statedict.pt')
                 torch.save(self.optimizer.state_dict(), f'{path}/optimizer_statedict.pt')
-                torch.save(self.trainExplortionStrategy.state_dict(), 
-                                        f'{path}/trainExplortionStrategy_statedict.pt')
+                torch.save(self.trainExplorationStrategy.state_dict(), 
+                                        f'{path}/trainExplorationStrategy_statedict.pt')
             print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
 
     def attempt_resume(self):
@@ -562,8 +562,8 @@ class DQN:
         path = f'{self.log_dir}/resume'
         self.replayBuffer.load_state_dict(torch.load(f'{path}/replayBuffer_statedict.pt'))
         self.optimizer.load_state_dict(torch.load(f'{path}/optimizer_statedict.pt'))
-        self.trainExplortionStrategy.load_state_dict(
-                            torch.load(f'{path}/trainExplortionStrategy_statedict.pt'))
+        self.trainExplorationStrategy.load_state_dict(
+                            torch.load(f'{path}/trainExplorationStrategy_statedict.pt'))
 
         # load the models
         print('\tLoading the online and target models')
