@@ -401,6 +401,8 @@ class DQN:
             clip_grads(self.online_model)
             self.optimizer.step()
             total_loss += loss.item()
+            # uncomment to get an idea of the speed
+            # print(f'gradient-step {ith_gradient_update}', end='\r')
 
         return total_loss/self.num_gradient_steps
 
