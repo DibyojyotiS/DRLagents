@@ -541,8 +541,7 @@ class DQN:
         """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
         episode-number, online-model and the target-model to resume the training. """
 
-        if not os.path.exists(self.log_dir): return
-        else: print('Attempting resume ...', end=' ')
+        print('Attempting resume ...', end=' ')
 
         def load_csvbook(path):
             with open(path, 'r') as f:
@@ -575,4 +574,4 @@ class DQN:
         # update the start-episode
         self.start_episode = episode + 1
 
-        return print('Successfully loaded stuff!')
+        return print('Successfully loaded stuff! Ready to resume training.')
