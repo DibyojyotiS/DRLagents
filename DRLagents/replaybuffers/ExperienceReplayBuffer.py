@@ -33,7 +33,7 @@ class ExperienceReplayBuffer(ReplayBuffer):
         experienceTupple = [state, action, reward, nextState, done]
 
         # lazy init buffer
-        if self.buffer is None: self.buffer = self._lazy_buffer_init(experienceTupple, self._tuppleDesc)
+        if self.buffer is None: self.buffer = self._lazy_buffer_init(experienceTupple, self._tuppleDesc, self.bufferSize)
 
         idx = self.nextidx
         for i, key in enumerate(self._tuppleDesc):

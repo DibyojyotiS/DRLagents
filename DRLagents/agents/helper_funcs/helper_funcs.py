@@ -41,7 +41,7 @@ def compute_GAE(values:Tensor, rewards, gamma:float, lamda:float):
     return gae
 
 
-def make_transitions(trajectory, state, action, nextState):
+def default_make_transitions(trajectory, state, action, nextState):
     '''
     Usefull for frame-skipping, where the SAME action is repeated for a small number of steps
     
@@ -56,3 +56,17 @@ def make_transitions(trajectory, state, action, nextState):
     reward = sum([r for o,i,r,d in trajectory])
     done = trajectory[-1][-1]
     return [[state, action, reward, nextState, done]]
+
+
+def default_make_state(trajectory, action_taken):
+    '''
+    Usefull for frame-skipping, where the SAME action is repeated for a small number of steps
+    
+    trajectory: which is a list of [next-observation, info, reward, done]
+    state: the state before the begenning of the frame-skipping
+    action: the action repeated for frame-skipping
+    nextState: the state after the frame-skipping
+    
+    returns: next-state: a tensor
+    ''' 
+    return trajectory[-1][0]

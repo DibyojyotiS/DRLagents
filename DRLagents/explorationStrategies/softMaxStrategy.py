@@ -13,7 +13,7 @@ from ..utils import printDict
 # training strategies like the DQN, or alternatively the same model that would be trained can be sent here
 class softMaxAction(Strategy):
 
-    def __init__(self, model: nn.Module, temperature=1, finaltemperature=None, 
+    def __init__(self, temperature=1, finaltemperature=None, 
                     decaySteps=None, outputs_LogProbs=False, print_args=False) -> None:
         ''' decays temperature by 1/e of initial-final in decaySteps if not None 
 
@@ -24,15 +24,15 @@ class softMaxAction(Strategy):
         decaySteps: episodes in which temperaure decays to 1/e the way to final
                     If decaySteps=None, then temperature will not be decayed.
 
-        outputs_LogProbs: whether the model returns log-probablities of actions
+        outputs_LogProbs: whether the model passed in select_action 
+                          returns log-probablities of actions
 
         NOTE: for outputs_LogProbs = True the action will be sampled from the 
-                distribution returned by the model. 
+                distribution returned by the model passed in select_action. 
                 (corresponds to temperature=1, decaySteps=None)
         '''
         if print_args: printDict(self.__class__.__name__, locals())
 
-        self.model = model
         self.temperature = temperature
         self.init_temperature = temperature
         self.final_temperature = finaltemperature
@@ -47,21 +47,21 @@ class softMaxAction(Strategy):
                 gumbel-softmax. (corresponds to temperature=1, decaySteps=None)''')
 
 
-    def select_action(self, state: Tensor, 
+    def select_action(self, model:nn.Module, state: Tensor, 
                         logProb_n_entropy=False, grad=False) \
                             -> Union[Tensor, 'tuple[Tensor, Tensor, Tensor]']:
         if not grad: # block gradients (do not store computation graph)
             with torch.no_grad():
-                outputs = self._softMaxActionUtil(state, logProb_n_entropy)
+                outputs = self._softMaxActionUtil(model, state, logProb_n_entropy)
         else: # otherwise allow gradients
-            outputs = self._softMaxActionUtil(state, logProb_n_entropy)   
+            outputs = self._softMaxActionUtil(model, state, logProb_n_entropy)   
         return outputs   
 
 
-    def _softMaxActionUtil(self, state:Tensor, logProb_n_entropy:bool):
+    def _softMaxActionUtil(self, model:nn.Module, state:Tensor, logProb_n_entropy:bool):
 
         # compute the action-probablities
-        action_scores = self.model(state)
+        action_scores = model(state)
         if not self.outputs_LogProbs:
             probs = Categorical(F.softmax(action_scores/self.temperature, dim=-1))
         else:

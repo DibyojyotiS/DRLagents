@@ -2,7 +2,6 @@
 # This particular version also uses entropy in the policy loss
 
 import os
-from copy import deepcopy
 from time import perf_counter
 import time
 from typing import Union
@@ -181,7 +180,7 @@ class VPG:
         self._initBookKeeping()
 
         if not evalExplortionStrategy:
-            self.evalExplortionStrategy = greedyAction(self.policy_model, outputs_LogProbs=True)
+            self.evalExplortionStrategy = greedyAction(outputs_LogProbs=True)
             print("Using trainExplortionStrategy as evalExplortionStrategy.")
         else:
             self.evalExplortionStrategy = evalExplortionStrategy 
@@ -269,7 +268,7 @@ class VPG:
                 state_tensor = torch.tensor([state], dtype=torch.float32, device=self.device)
 
                 # take action
-                action = evalExplortionStrategy.select_action(state_tensor)
+                action = evalExplortionStrategy.select_action(self.policy_model, state_tensor)
 
                 # repeat the action skipStep number of times
                 nextState, sumReward, done, stepsTaken = self._take_steps(action)
@@ -375,7 +374,8 @@ class VPG:
         while not done:
             # take the action and handle frame skipping
             state_tensor = torch.tensor([state], dtype=torch.float32, device=self.device)
-            action, log_prob, entropy = self.trainExplortionStrategy.select_action(state_tensor, grad=True, logProb_n_entropy=True)
+            action, log_prob, entropy = self.trainExplortionStrategy.select_action(self.policy_model, 
+                                                    state_tensor, grad=True, logProb_n_entropy=True)
             nextState, sumReward, done, stepsTaken = self._take_steps(action)
             # append to trajectory
             trajectory['state'].append(state)

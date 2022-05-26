@@ -37,8 +37,8 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
     # init necessities
     Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
     optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
-    trainExplortionStrategy = epsilonGreedyAction(Qnetwork, 0.5, 0.05, 100)
-    evalExplortionStrategy = greedyAction(Qnetwork)
+    trainExplortionStrategy = epsilonGreedyAction(0.5, 0.05, 100)
+    evalExplortionStrategy = greedyAction()
 
     ## choose a replay buffer or implement your own
     if buffertype == 'uniform':
@@ -51,7 +51,7 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
         
     # define the training strategy DQN in our example
     DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, 
-                    MaxTrainEpisodes=MTE, skipSteps=1, eval_episode=5, device=device)
+                    MaxTrainEpisodes=MTE, skipSteps=1, eval_episode=50, device=device)
                     # might want to do MaxTrainEpisodes=250 for prioritized buffer
 
     # train the model

@@ -16,13 +16,12 @@ class epsilonGreedyAction(Strategy):
     '''decays epsilon from initial to final in decaySteps.
         doesnot decay epsilon if decaySteps is None'''
 
-    def __init__(self, model: nn.Module, epsilon=0.5, finalepsilon=None, 
+    def __init__(self, epsilon=0.5, finalepsilon=None, 
                     decaySteps=None, outputs_LogProbs=False, 
                     print_args=False) -> None:
 
         if print_args: printDict(self.__class__.__name__, locals())
 
-        self.model = model
         self.outputs_LogProbs = outputs_LogProbs
         self.epsilon = epsilon
         self.initepsilon = epsilon
@@ -37,23 +36,23 @@ class epsilonGreedyAction(Strategy):
             self.decay_factor = (np.math.log(epsilon) - np.math.log(finalepsilon))/decaySteps
 
 
-    def select_action(self, state:Tensor, 
+    def select_action(self, model:nn.Module, state:Tensor, 
                         logProb_n_entropy=False, grad=False) \
                             -> Union[Tensor, 'tuple[Tensor, Tensor, Tensor]']:
         
         if self.device is None:
-            self._lazy_init_details(self.model, state)
+            self._lazy_init_details(model, state)
         
         if not grad: # block gradients (do not store computation graph)
             with torch.no_grad():
-                outputs = self._epsilonGreedyActionUtil(state, logProb_n_entropy)
+                outputs = self._epsilonGreedyActionUtil(model, state, logProb_n_entropy)
         else: # otherwise allow gradients
-            outputs = self._epsilonGreedyActionUtil(state, logProb_n_entropy)   
+            outputs = self._epsilonGreedyActionUtil(model, state, logProb_n_entropy)   
 
         return outputs     
 
 
-    def _epsilonGreedyActionUtil(self, state:Tensor, logProb_n_entropy:bool):
+    def _epsilonGreedyActionUtil(self, model:nn.Module, state:Tensor, logProb_n_entropy:bool):
 
         sample = torch.rand(1)
         action_scores = None # dummy init action_scores
@@ -62,14 +61,14 @@ class epsilonGreedyAction(Strategy):
                                                 size = (*self.output_shape[:-1],1), 
                                                 device=self.device)
         else:
-            action_scores = self.model(state) # Q-values or action-log-probablities
+            action_scores = model(state) # Q-values or action-log-probablities
             eGreedyAction = torch.argmax(action_scores, dim=-1, keepdim=True)
 
         # if entropy and log-probablities are not required 
         if not logProb_n_entropy: return eGreedyAction
         # compute action_scores if not done
         if action_scores is None:
-            action_scores = self.model(state)
+            action_scores = model(state)
         # if model outputs action-Q-values, convert them to log-probs
         if not self.outputs_LogProbs:
             log_probs = F.log_softmax(action_scores, dim=-1)
@@ -92,16 +91,3 @@ class epsilonGreedyAction(Strategy):
         predictions = model(state)
         self.output_shape = predictions.shape
         self.device = predictions.device
-
-
-
-    # def select_action(self, state:Tensor):
-    #     ''' a single state not a batch! '''
-    #     with torch.no_grad():
-    #         Qpred = self.model(state)
-    #         sample = torch.rand(1)
-    #         if sample < self.epsilon:
-    #             eGreedyAction = torch.randint(Qpred.shape[-1], (*Qpred.shape[:-1],1), device=Qpred.device)
-    #         else:
-    #             eGreedyAction = torch.argmax(Qpred, keepdim=True)
-    #     return eGreedyAction

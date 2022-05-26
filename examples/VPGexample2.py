@@ -80,8 +80,8 @@ def run_VPG_on_cartpole_V0(evalRender=False):
     # init necessities
     policyOptimizer = optim.Adam(policy_model.parameters(), lr=0.01)
     valueOptimizer = optim.Adam(value_model.parameters(), lr=0.01)
-    trainExplortionStrategy = softMaxAction(policy_model, outputs_LogProbs=True)
-    evalExplortionStrategy = greedyAction(policy_model)
+    trainExplortionStrategy = softMaxAction(outputs_LogProbs=True)
+    evalExplortionStrategy = greedyAction()
 
     VPGagent = VPG(env, policy_model, value_model, trainExplortionStrategy, 
                     policyOptimizer, valueOptimizer, gamma=0.99, lamda=0.8, 

@@ -4,16 +4,16 @@ from torch import Tensor, nn
 # base class for exploration strategy
 class Strategy:
     ''' The base class for strategies '''
-    def __init__(self, model:nn.Module, outputs_LogProbs=False) -> None:
-        """ outputs_LogProbs: whether the model outputs 
-                                the Log of action-probablities 
+    def __init__(self, outputs_LogProbs=False) -> None:
+        """ outputs_LogProbs: whether the model (passed in select_action) 
+                            outputs the Log of action-probablities 
             NOTE: If outputs_LogProbs=False then it will be assumed the model
                     maps state to Q-values. """
         # define required params
         pass
 
 
-    def select_action(self, state:Tensor, 
+    def select_action(self, model:nn.Module, state:Tensor, 
                         logProb_n_entropy=False, grad=False) \
                         -> Union[Tensor, 'tuple[Tensor, Tensor, Tensor]']:
         """ This method should be implemented in every derived class.
@@ -45,3 +45,10 @@ class Strategy:
         should be updated once every episode """
         # decay params if applicable
         pass
+
+    def state_dict(self):
+        """ all the non-callable params in __dict__ """
+        return {k:v for k,v in self.__dict__.items() if not callable(v)}
+
+    def load_state_dict(self, state_dict):
+        self.__dict__.update(state_dict)

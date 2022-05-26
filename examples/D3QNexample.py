@@ -40,8 +40,8 @@ def run_D3QN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
     # init necessities
     duellingQnetwork = duellingDNN(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
     optimizer = optim.Adam(duellingQnetwork.parameters(), lr=0.001)
-    trainExplortionStrategy = epsilonGreedyAction(duellingQnetwork, 0.5, 0.05, 100)
-    evalExplortionStrategy = greedyAction(duellingQnetwork)
+    trainExplortionStrategy = epsilonGreedyAction(0.5, 0.05, 100)
+    evalExplortionStrategy = greedyAction()
 
     ## choose a replay buffer or implement your own
     if buffertype == 'uniform':
