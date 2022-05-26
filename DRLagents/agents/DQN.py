@@ -531,19 +531,14 @@ class DQN:
                 path = f'{self.log_dir}/resume'
                 with open(f'{path}/episode.txt', 'w') as f: f.write(f'{episode}')
                 torch.save(self.replayBuffer.state_dict(), f'{path}/replayBuffer_statedict.pt')
-                torch.save(self.trainExplortionStrategy, f'{path}/trainExplortionStrategy.pt')
                 torch.save(self.optimizer.state_dict(), f'{path}/optimizer_statedict.pt')
+                torch.save(self.trainExplortionStrategy.state_dict(), 
+                                        f'{path}/trainExplortionStrategy_statedict.pt')
             print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
 
     def attempt_resume(self):
-        """ attempt to load the required stuff to resume the training. 
-        If any of replayBuffer, optimizer, trainExplorationStrategy has 
-        been specified in the init, then the saved variable is not loaded 
-        and instead the user specified is used.
-        
-        To load any of the saved replayBuffer, optimizer, trainExplorationStrategy
-        make sure to init with that valiable set to None. 
-        Example: init with replayBuffer = None will load the saved replayBuffer """
+        """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
+        episode-number, online-model and the target-model to resume the training. """
 
         print('Attempting resume ...', end=' ')
 
@@ -563,11 +558,12 @@ class DQN:
         self.trainBook = load_csvbook(f'{self.log_dir}/trainBook.csv')
         self.evalBook = load_csvbook(f'{self.log_dir}/evalBook.csv')
 
-        # load the replaybuffer, optimizer, trainStrategy (if not specified by user)
+        # load the replaybuffer, optimizer, trainStrategy
         path = f'{self.log_dir}/resume'
         self.replayBuffer.load_state_dict(torch.load(f'{path}/replayBuffer_statedict.pt'))
         self.optimizer.load_state_dict(torch.load(f'{path}/optimizer_statedict.pt'))
-        self.trainExplortionStrategy.load_state_dict(torch.load(f'{path}/trainExplortionStrategy.pt'))
+        self.trainExplortionStrategy.load_state_dict(
+                            torch.load(f'{path}/trainExplortionStrategy_statedict.pt'))
 
         # load the models
         print('\tLoading the online and target models')
