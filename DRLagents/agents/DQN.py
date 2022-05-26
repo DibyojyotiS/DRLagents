@@ -541,8 +541,6 @@ class DQN:
         """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
         episode-number, online-model and the target-model to resume the training. """
 
-        print('Attempting resume ...', end=' ')
-
         def load_csvbook(path):
             with open(path, 'r') as f:
                 keys = f.readline().strip().split(',')
