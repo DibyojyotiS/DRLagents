@@ -566,7 +566,6 @@ class DQN:
                             torch.load(f'{path}/trainExplorationStrategy_statedict.pt'))
 
         # load the models
-        print('\tLoading the online and target models')
         with open(f'{self.log_dir}/resume/episode.txt') as f: episode = int(f.readline().strip())
         path = f'{self.log_dir}/models/episode-{episode}'
         self.online_model.load_state_dict(torch.load(f'{path}/onlinemodel_statedict.pt'))
