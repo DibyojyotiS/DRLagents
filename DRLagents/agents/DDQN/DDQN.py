@@ -1,5 +1,5 @@
 import torch
-from .DQN import DQN
+from ..DQN.DQN import DQN
 
 
 class DDQN(DQN):

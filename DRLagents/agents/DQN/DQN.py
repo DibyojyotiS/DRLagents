@@ -13,7 +13,7 @@ from DRLagents.explorationStrategies import Strategy, greedyAction
 from DRLagents.replaybuffers import ReplayBuffer
 from DRLagents.utils.weightedLosses import weighted_MSEloss
 from DRLagents.utils.helper_funcs import printDict
-from .helper_funcs import *
+from ..common_helper_funcs import *
 
 # things to discuss about skipping frames
 # 1. how to accumulate the rewards in the skipped frames? -> currently a cumulative (summed) reward
@@ -539,9 +539,14 @@ class DQN:
                                         f'{path}/trainExplorationStrategy_statedict.pt')
             print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
 
-    def attempt_resume(self):
+    def attempt_resume(self, resume_dir:str=None):
         """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
-        episode-number, online-model and the target-model to resume the training. """
+        episode-number, online-model and the target-model to resume the training. 
+        resume_dir: the log_dir of the run from which to resume. If None then the 
+                    log_dir passed in init is considered. """
+
+        if not resume_dir: resume_dir = self.log_dir
+        else: resume_dir = os.path.join(resume_dir, 'trainLogs')
 
         def load_csvbook(path):
             with open(path, 'r') as f:
@@ -555,19 +560,19 @@ class DQN:
             return book
 
         # reconstruct the books
-        self.trainBook = load_csvbook(f'{self.log_dir}/trainBook.csv')
-        self.evalBook = load_csvbook(f'{self.log_dir}/evalBook.csv')
+        self.trainBook = load_csvbook(f'{resume_dir}/trainBook.csv')
+        self.evalBook = load_csvbook(f'{resume_dir}/evalBook.csv')
 
         # load the replaybuffer, optimizer, trainStrategy
-        path = f'{self.log_dir}/resume'
+        path = f'{resume_dir}/resume'
         self.replayBuffer.load_state_dict(torch.load(f'{path}/replayBuffer_statedict.pt'))
         self.optimizer.load_state_dict(torch.load(f'{path}/optimizer_statedict.pt'))
         self.trainExplorationStrategy.load_state_dict(
                             torch.load(f'{path}/trainExplorationStrategy_statedict.pt'))
 
         # load the models
-        with open(f'{self.log_dir}/resume/episode.txt') as f: episode = int(f.readline().strip())
-        path = f'{self.log_dir}/models/episode-{episode}'
+        with open(f'{resume_dir}/resume/episode.txt') as f: episode = int(f.readline().strip())
+        path = f'{resume_dir}/models/episode-{episode}'
         self.online_model.load_state_dict(torch.load(f'{path}/onlinemodel_statedict.pt'))
         self.target_model.load_state_dict(torch.load(f'{path}/targetmodel_statedict.pt'))
 

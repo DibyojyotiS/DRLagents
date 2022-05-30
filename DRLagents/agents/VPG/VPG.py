@@ -10,7 +10,7 @@ import gym
 from numpy.core.fromnumeric import mean
 import torch
 import torch.nn.functional as F
-from DRLagents.agents.helper_funcs.helper_funcs import clip_grads, compute_GAE
+from DRLagents.agents.common_helper_funcs.helper_funcs import clip_grads, compute_GAE
 from DRLagents.explorationStrategies import Strategy
 from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
@@ -55,7 +55,7 @@ class VPG:
                 eval_episode = None,
                 evalExplortionStrategy: Union[Strategy, None]=None,
                 shared_policy_value_nets = False,
-                log_dir = '.temp',
+                log_dir = None,
                 user_printFn = lambda : None,
                 save_snapshots = True,
                 device= torch.device('cpu'),
@@ -181,7 +181,7 @@ class VPG:
 
         if not evalExplortionStrategy:
             self.evalExplortionStrategy = greedyAction(outputs_LogProbs=True)
-            print("Using trainExplortionStrategy as evalExplortionStrategy.")
+            print("Using greedy strategy as evalExplortionStrategy.")
         else:
             self.evalExplortionStrategy = evalExplortionStrategy 
 

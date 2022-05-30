@@ -1,5 +1,10 @@
 # DRLagents
 
+Deep RL algos on GPU and CPU with a lot of functionalities (frame-skipping, logging, resumable training, etc...)
+
 comming up soon
 
-pip install -e DRLagents
+## Installation
+Download and unzip code, then:
+
+    pip install -e DRLagents
