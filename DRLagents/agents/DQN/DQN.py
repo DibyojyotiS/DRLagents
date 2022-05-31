@@ -217,7 +217,7 @@ class DQN:
         self.target_model.eval()
         self._initBookKeeping()
         self.optimize_at_end = optimize_every_kth_action==-1
-        self.start_episode = 0 # required if resuming the training
+        self.current_episode = 0 # required if resuming the training
 
         if not evalExplortionStrategy:
             self.evalExplortionStrategy = greedyAction()
@@ -230,12 +230,13 @@ class DQN:
         
         train_start_time = perf_counter()
 
-        for episode in range(self.start_episode, self.MaxTrainEpisodes):
+        for episode in range(self.current_episode, self.MaxTrainEpisodes):
             
             done = False
             observation = self.env.reset()
             info = None # no initial info from gym.Env.reset
             current_start_time = perf_counter()
+            self.current_episode = episode
     
             # render
             if render: self.env.render()
@@ -583,7 +584,7 @@ class DQN:
         self.target_model.load_state_dict(torch.load(f'{path}/targetmodel_statedict.pt'))
 
         # update the start-episode
-        self.start_episode = episode + 1
+        self.current_episode = episode + 1
 
         return print(f'Successfully loaded stuff from {resume_dir}!',
                     '\nReady to resume training.')
