@@ -539,7 +539,8 @@ class DQN:
                                         f'{path}/trainExplorationStrategy_statedict.pt')
             print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
 
-    def attempt_resume(self, resume_dir:str=None):
+    def attempt_resume(self, resume_dir:str=None, 
+                        reload_buffer=True, reload_optim=True, reload_tstrat=True):
         """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
         episode-number, online-model and the target-model to resume the training. 
         resume_dir: the log_dir of the run from which to resume. If None then the 
@@ -565,10 +566,15 @@ class DQN:
 
         # load the replaybuffer, optimizer, trainStrategy
         path = f'{resume_dir}/resume'
-        self.replayBuffer.load_state_dict(torch.load(f'{path}/replayBuffer_statedict.pt'))
-        self.optimizer.load_state_dict(torch.load(f'{path}/optimizer_statedict.pt'))
-        self.trainExplorationStrategy.load_state_dict(
-                            torch.load(f'{path}/trainExplorationStrategy_statedict.pt'))
+        if reload_buffer:
+            self.replayBuffer.load_state_dict(
+                torch.load(f'{path}/replayBuffer_statedict.pt'))
+        if reload_optim:
+            self.optimizer.load_state_dict(
+                torch.load(f'{path}/optimizer_statedict.pt'))
+        if reload_tstrat:
+            self.trainExplorationStrategy.load_state_dict(
+                torch.load(f'{path}/trainExplorationStrategy_statedict.pt'))
 
         # load the models
         with open(f'{resume_dir}/resume/episode.txt') as f: episode = int(f.readline().strip())
@@ -579,4 +585,5 @@ class DQN:
         # update the start-episode
         self.start_episode = episode + 1
 
-        return print('Successfully loaded stuff! Ready to resume training.')
+        return print(f'Successfully loaded stuff from {resume_dir}!',
+                    '\nReady to resume training.')
