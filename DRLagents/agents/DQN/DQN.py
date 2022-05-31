@@ -225,12 +225,22 @@ class DQN:
         else: self.evalExplortionStrategy = evalExplortionStrategy
 
 
-    def trainAgent(self, render=False):
-        """The main function to train the model"""
+    def trainAgent(self, num_episodes:int=None, render=False):
+        """
+        The main function to train the model. If called more than once, 
+        then it continues from the last episode. This functionality is usefull
+        when we would like to do evaluation on a different environment.
+
+        num_episodes: the number of episoded to train for. If 0 or None, then 
+                        this trains untill MaxTrainEpisodes (passed in init)
+        render: render the env using env.render() while training
+        """
         
         train_start_time = perf_counter()
+        stop_episode = self.current_episode+num_episodes if num_episodes \
+                        else self.MaxTrainEpisodes
 
-        for episode in range(self.current_episode, self.MaxTrainEpisodes):
+        for episode in range(self.current_episode, stop_episode):
             
             done = False
             observation = self.env.reset()
@@ -300,9 +310,25 @@ class DQN:
         return self._returnBook()
 
 
-    def evaluate(self, evalExplortionStrategy:Strategy=greedyAction(), EvalEpisodes=1, 
-                render=False, verbose=True):
-        """ Evaluate the model for EvalEpisodes number of episodes """
+    def evaluate(self, env:gym.Env=None, evalExplortionStrategy:Strategy=greedyAction(), 
+                EvalEpisodes=1, render=False, verbose=True):
+        """ Evaluate the model for EvalEpisodes number of episodes.
+        env: the environment to evaluate on - to be used if the intended env for 
+            eval is not the training env. If None (default) then the env passed
+            in the init is used for evaluation.
+
+        evalExplortionStrategy: the exploration strategy to use for evaluation.
+                                default: greedy strategy 
+        
+        EvalEpisodes: the number of times to do evaluation
+
+        render: render using env.render()
+        
+        verbose: print the evaluation result
+        
+        -------------------
+        returns: a dict containing the total-rewards, steps and wall-times for 
+                each EvalEpisodes"""
 
         evalRewards = []
         evalSteps = []
