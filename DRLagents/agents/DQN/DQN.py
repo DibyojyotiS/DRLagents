@@ -668,9 +668,21 @@ class DQN:
                         reload_buffer=True, reload_optim=True, reload_tstrat=True):
         """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
         episode-number, online-model and the target-model to resume the training. 
-        
-        resume_dir: the log_dir of the run from which to resume. If None then the 
-                    log_dir passed in init is considered. """
+
+        ## parameters
+        1. resume_dir: str (default None)
+                - the log_dir of the run from which to resume. 
+                - If None then the log_dir passed in init is considered.
+        2. reload_buffer: bool
+                - wether to restore the state-dict of the 
+                replayBuffer passed in init
+        3. reload_optim: bool
+                - wether to restore the state-dict of the 
+                optimizer passed in init
+        4. reload_tstrat: bool
+                - wether to restore the state-dict of the 
+                trainExplorationStrategy passed in init
+        """
 
         if not resume_dir: resume_dir = self.log_dir
         else: resume_dir = os.path.join(resume_dir, 'trainLogs')
