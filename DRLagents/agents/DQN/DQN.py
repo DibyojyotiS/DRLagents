@@ -272,6 +272,7 @@ class DQN:
         then it continues from the last episode. This functionality is usefull
         when we would like to do evaluation on a different environment.
 
+        ### parameters
         1. num_episodes: int (default None)
                 - the number of episodes to train for. 
                 - If 0 or None, then this trains until 
@@ -387,21 +388,28 @@ class DQN:
                 EvalEpisodes=1, render=False, verbose=True, evalEnv:gym.Env=None):
         """ Evaluate the model for EvalEpisodes number of episodes.
 
-        evalExplortionStrategy: the exploration strategy to use for evaluation.
-                                default: greedy strategy 
+        ### parameters
+        1. evalExplortionStrategy: Strategy (default greedyAction)
+                - the exploration strategy to use for evaluation.
         
-        EvalEpisodes: the number of times to do evaluation
+        2. EvalEpisodes: int (default 1)
+                - the number of times to do evaluation
 
-        render: render using env.render()
+        3. render: bool (default False)
+                - render using env.render()
         
-        verbose: print the evaluation result
+        4. verbose: bool (default True) 
+                - print the evaluation result
 
-        evalEnv: the environment to evaluate on - to be used if the intended env for 
-            eval is not the training env. If None (default) then the env passed
-            in the init is used for evaluation.
-        -------------------
-        returns: a dict containing the total-rewards, steps and wall-times for 
-                each EvalEpisodes"""
+        5. evalEnv: gym.Env (default None) 
+                - the environment to evaluate on - to be used if the intended 
+                env for evaluation is not the training env. If None (default) 
+                then the env passed in the init is used for evaluation.
+
+        ### returns
+            - evalinfo: dict[str, list]
+                    - contains the total-rewards, steps and wall-times for 
+                    each episode of EvalEpisodes """
 
         evalRewards = []
         evalSteps = []
@@ -660,6 +668,7 @@ class DQN:
                         reload_buffer=True, reload_optim=True, reload_tstrat=True):
         """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
         episode-number, online-model and the target-model to resume the training. 
+        
         resume_dir: the log_dir of the run from which to resume. If None then the 
                     log_dir passed in init is considered. """
 
