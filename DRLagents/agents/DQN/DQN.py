@@ -1,6 +1,5 @@
 from copy import deepcopy
 from time import perf_counter
-from typing import Union
 
 import os
 import gym
@@ -26,20 +25,20 @@ class DQN:
 
     def __init__(self, 
                 # training necessities
-                env:gym.Env, model:nn.Module,
+                trainingEnv:gym.Env, model:nn.Module,
                 trainExplorationStrategy: Strategy,
                 optimizer: Optimizer,
                 replayBuffer: ReplayBuffer,
-                batchSize = 512,
-                gamma = 0.8,
-                update_freq = 5,
-                optimize_every_kth_action = 1,
-                num_gradient_steps = 1,
-                MaxTrainEpisodes = 500,
-                MaxStepsPerEpisode = None,
+                batchSize:int= 512,
+                gamma:float= 0.8,
+                update_freq:int= 5,
+                MaxTrainEpisodes:int= 500,
+                MaxStepsPerEpisode:int= None,
 
                 # optional training necessities
                 skipSteps = 0,
+                optimize_every_kth_action = 1,
+                num_gradient_steps = 1,
                 make_state = default_make_state,
                 make_transitions = default_make_transitions,
                 loss = weighted_MSEloss,
@@ -47,128 +46,172 @@ class DQN:
                 polyak_tau = 0.1,
 
                 # eval while training
-                eval_episode = None,
-                evalExplortionStrategy: Union[Strategy, None]=None,
+                evalFreq = None,
+                evalExplortionStrategy= greedyAction(),
 
                 # miscellaneous
+                printFreq = 1,
                 log_dir = None,
                 snapshot_episode = 1,
-                resumeable_snapshot = 1,
-                printFreq = 50,
-                user_printFn = None,
+                resumeable_snapshot:int = None,
                 breakAtReward = float('inf'),
                 device= torch.device('cpu'),
                 float_dtype = torch.float32,
                 print_args=False) -> None:
         '''
-        # Psss note the notes at the bottom too.
+        Inits the training procedure. Also please read the notes at the bottom.
 
-
-        ## training necessities
+        ### training necessities
         
-        model: The deep network to be trained. It maps states to the action-values.
+        1. trainingEnv: gym.Env
+                - a gym env used for training on, that behaves similar to standard gym environments. 
+
+        2. model: nn.Module
+                - The deep network to be trained. It maps states to the action-values.
+
+        3. trainExplortionStrategy: Strategy
+                - training strategy similar to the classes defined in explorationStrategies.
+                - see: DRLagents.explorationStrategies
+                - it is possible to sub-class the base class Strategy 
+                    and create your custom strategy.
+
+        4. optimizer: torch.optim.Optimizer
+                - any optimizer with same behaviour one from torch.optim
+
+        5. replayBuffer: ReplayBuffer
+                - a instance of the class ReplayBuffer (see DRLagents.replaybuffers)
+                  like ExperienceReplayBuffer or PrioritizedReplayBuffer
+
+        6. batchSize: int
+                - the size of the batch of expericence tuples sampled from the replayBuffer
+
+        7. gamma: float (default 5) 
+                - the discount factor
+                - used in computing the 1-step TD error
+
+        8. update_freq: int (default 1)
+                - if not None, the target model is updated every update_freq-th episode
+
+        9. MaxTrainEpisodes: int (default 500)
+                - maximum number of episodes to train
+
+        10. MaxStepsPerEpisode: int (default None)
+                - break the episode if number of steps taken reaches or exceeds MaxStepsPerEpisode.
+                - if None then the episode is continued until trianingEnv.step(...) returns done as True.
+
+        ### optional training necessities
+
+        11. skipSteps: int (default 0)
+                - the number of steps to repeate the previous action 
+                - the model not optimized during skipped steps
+                - usually the a state-transition thus produced as: 
+                    [prev-state, action, sumed rewards, next-state, done]
+                - you can provide a custom way of making transitions in **make_transitions**
+                  argument explained later.
+
+        12. optimize_every_kth_action: int (default 1)
+                - the online model is update after every kth new action. 
+                - To train the online model only at the end of an episode set this to -1
+
+        13. num_gradient_steps: int (default 1)
+                - the number of gradient updates every optimize_kth_step.
         
-        env: a gym env, that behaves similar to standard gym environments. 
+        14. make_state: function (default default_make_state)
+                - inputs:
+                    - trajectory: list of [next-observation, info, reward, done].
+                        If skipSteps is 0, then trajectory will be of length 1.
+                    - action: the action repeated during the trajectory. 
+                - Since gym.Env.reset returns only the first observation, this function 
+                    must handle [observation, None, None, None]. Though this only happens 
+                    at the beginning of an episode after the call to trainEnv.reset
+                    (or evalEnv.reset in evaluation).
+                - This is used to draw the first most state.
+                - Should also handle trajectory of variable lengths.
 
-        replayBuffer: a instance of the class ReplayBuffer 
-                      (like ExperienceReplayBuffer or PrioritizedReplayBuffer)
-        
-        trainExplortionStrategy: training strategy similar to the classes defined in explorationStrategies.
-        
-        optimizer: any optimizer with same behaviour one from torch.optim
-        
-        gamma: the discount factor
-
-        update_freq: if not None, the target model is updated every update_freq-th episode
-
-        optimize_kth_step: the online model is update after every kth new action (i.e. steps excluding 
-                            skip-step). To train the online model only at the end of an episode set 
-                            this to -1
-
-        num_gradient_steps: the number of gradient updates every optimize_kth_step.
-
-        MaxTrainEpisodes: maximum number of episodes to train for
-
-        MaxStepsPerEpisode: break the episode if number of steps taken reaches or exceeds this
-
-
-        ## optional training necessities
-
-        skipSteps: the number of steps to repeate the previous action (model not optimized at skipped steps)
-        
-        make_state: function that takes a trajectory (list of [next-observation, info, reward, done]) 
-                    & action_taken to make a state. This function should handle info, action_taken, reward, 
-                    done as Nones, since gym.env.reset doesnot return info. Should also handle trajectory of 
-                    variable lengths.
-
-        make_transitions: creates a list of state-transitions of the form 
-                          [state, action, reward, next-state, done]
-                            Inputs are- trajectory, state, action, nextState
+        15. make_transitions: function (default default_make_state)
+                - inputs: (trajectory, state, action, mextState)
+                        - trajectory: which is a list of [next-observation, info, reward, done].
+                            If skipSteps is 0, then trajectory will be of length 1.
+                        - state: the state before the begenning of the frame-skipping
+                        - action: the action repeated for frame-skipping
+                        - nextState: the state after the frame-skipping
+                - creates a list of state-transitions of the form [state, action, reward, next-state, done]
+                - Inputs are- trajectory, state, action, nextState
                                 trajectory: which is a list of [observation, info, reward, done]
                                 state: the state before the begenning of the frame-skipping
                                 action: the action used during the frame-skipping
                                 nextState: the state after the frame-skipping
                             Should handle trajectories of variable lengths.
 
-        loss: The loss will be called as loss(Qestimate, td_target, weights=sampleWeights) 
-                if the replayBuffer outputs sampleWeights, otherwise as loss(Qestimate, td_target).
-                For weighted_loss examples look in DRLagents.utils.weightedLosses
+        16. loss: function (default weighted_MSE)
+                - inputs: (X, target, weights[optional])
+                - if the replayBuffer.sample(...) outputs the sampleWeights 
+                  The loss will be called as loss(Qestimate, td_target, weights=sampleWeights) 
+                - otherwise loss will be called as loss(Qestimate, td_target).
+                - For weighted_loss examples look in DRLagents.utils.weightedLosses
 
-        polyak_average: whether to do the polyak-avaraging of target model as 
-                        polyak_tau*online_model + (1-polyak_tau)*target_model
-                        if enabled, polyak-averaging will be done in every episode
+        17. polyak_average: bool (default False)
+                - whether to do the polyak-avaraging of target model as 
+                    polyak_tau*online_model + (1-polyak_tau)*target_model
+                - if enabled, polyak-averaging will be done at end of every episode
         
-        polyak_tau: the target model is updated according to tau*online_model + (1-tau)*target_model 
-                    in every episode, the target_model is also updated to the online_model's weights 
-                    every update_freq episode.
+        18. polyak_tau: float (default 0.1)
+                - the target model is updated according to tau*online_model + (1-tau)*target_model 
+                    in every episode
 
+        ### eval while training
 
-        ## eval while training
+        19. evalFreq: int (default None)
+                - if not None, evaluate the agent at every evalFreq-th episode
 
-        eval_episode: evaluate the agent at every eval_episode-th episode
-
-        evalExplortionStrategy: strategy to be used for evalutation : default greedy-strategy
-
+        20. evalExplortionStrategy: Strategy (default greedy-strategy)
+                - strategy to select actions from q-values during evaluation
 
         ## miscellaneous 
+
+        21. printFreq: int (default 1) 
+                - print training progress every printFreq episode
         
-        log_dir: path to the directory to save logs and models set log_dir to None to save nothing
+        22. log_dir: str (default None)
+                - path to the directory to save logs and models 
+                - set log_dir to None to save nothing
 
-        snapshot_episode: save intermidiate models in the log_dir every snapshot_episode-th 
-                        episode. Set this to 0 to not snapshot. Or set to 1 (default) to 
-                        snapshot every episode. 
+        23. snapshot_episode: int (default 1) 
+                - save intermidiate models in the log_dir every snapshot_episode-th episode. 
+                - Set this to 0 or None to not snapshot. 
+                - Or set to 1 (default) to snapshot every episode. 
 
-        resumeable_snapshot: saves the (or overwrited the saved) replay-buffer, trainExporationStrategy, 
-                        optimizer-state, for every resumeable_snapshot-th snapshot. for example if 
-                        resumeable_snapshot=5, then the aformentioned things will be saved every at 5th 
-                        snapshot saved. Default, resumable_snapshot=1
-        
-        printFreq: print episode data every printFreq episode
+        24. resumeable_snapshot: int (default None)
+                - saves the (or overwrites the saved) replay-buffer, trainExporationStrategy, 
+                    optimizer-state, for every resumeable_snapshot-th snapshot. 
+                - set this to 0 or None to not save resumables
+                - set to 1 to save resumables at every snapshot
 
-        user_printFn: user provides this function to print user stuff 
-                        (called every printFreq episode), default: None
-       
-        breakAtReward: break training when the reward reaches this number
+        25. breakAtReward: float (default inf) 
+                - break training when the reward reaches/crosses breakAtReward
 
-        device: the device the model is on (default: cpu)
+        26. device: torch.device (default torch.device('cpu'))
+                - the device the model is on
 
-        float_dtype: the torch float dtype to be used
+        27. float_dtype: 
+                - the torch float dtype to be used
 
-        print_args: prints the names and values of the arguments (usefull for logging)
+        28. print_args: bool (default False)
+                - prints the names and values of the arguments (usefull for logging)
 
-        # Implementation notes:\n
-        NOTE: It is assumed that optimizer is already setup with the network parameters and learning rate.
-        NOTE: assumes the keys as ['state', 'action', 'reward', 'nextState', 'done'] in the sample dict 
-              from replayBuffer.
-        NOTE: The make_state function gets an input of a list of observations and infos corresponding to
-              the skipped and the current states.
-        NOTE: The initial list of observations is the initial observation repeated skipSteps+1 number of times.
-        NOTE: If episode terminates while skipping, the list is padded with the last observation and info
-        NOTE: The model and replay buffer are not updated within the skipSteps steps.
+        ## Implementation notes:\n
+            - It is assumed that optimizer is already setup with the network 
+                parameters and learning rate.
+            - assumes the keys as ['state', 'action', 'reward', 'nextState', 'done'] 
+                in the sample dict from replayBuffer.
+            - The make_state function gets an input of a list of observations and 
+                infos corresponding to the skipped and the current states.
+            - The model and replay buffer are not updated within the skipSteps steps.
 
-        # other comments: \n
-        loss: Look in DRLagents.utils for examples of weighted losses. In case your buffer would ONLY output samples,
-        feel free to use losses like torch.nn.MSELoss. Though all torch.nn losses may not be supported.
+        ## other comments: \n
+        loss: Look in DRLagents.utils for examples of weighted losses. In case your 
+        buffer would ONLY output samples, feel free to use losses like torch.nn.MSELoss. 
+        Though all torch.nn losses may not be supported.
         '''
 
         if print_args: printDict(self.__class__.__name__, locals())
@@ -176,7 +219,7 @@ class DQN:
         # basic
         self.online_model = model
         self.target_model = deepcopy(model)
-        self.env = env
+        self.trainingEnv = trainingEnv
         self.trainExplorationStrategy = trainExplorationStrategy
         self.replayBuffer = replayBuffer
         self.lossfn = loss
@@ -192,6 +235,10 @@ class DQN:
         self.update_freq_episode = update_freq
         self.optimize_every_kth_action = optimize_every_kth_action
         self.num_gradient_steps = num_gradient_steps
+
+        # eval
+        self.evalFreq = evalFreq
+        self.evalExplortionStrategy = evalExplortionStrategy
         
         # miscellaneous args
         self.skipSteps = skipSteps + 1
@@ -200,9 +247,7 @@ class DQN:
         self.breakAtReward = breakAtReward
         self.device = device
         self.printFreq = printFreq
-        self.eval_episode = eval_episode
         self.snapshot_episode = snapshot_episode
-        self.user_printFn = user_printFn
         self.float_dtype = float_dtype
         self.resumeable_snapshot = resumeable_snapshot
 
@@ -219,13 +264,9 @@ class DQN:
         self.optimize_at_end = optimize_every_kth_action==-1
         self.current_episode = 0 # required if resuming the training
 
-        if not evalExplortionStrategy:
-            self.evalExplortionStrategy = greedyAction()
-            print("Using greedy strategy as evalExplortionStrategy.")
-        else: self.evalExplortionStrategy = evalExplortionStrategy
 
-
-    def trainAgent(self, num_episodes:int=None, render=False):
+    def trainAgent(self, num_episodes:int=None, render=False, evalEnv=None,
+                    train_printFn=None, eval_printFn=None):
         """
         The main function to train the model. If called more than once, 
         then it continues from the last episode. This functionality is usefull
@@ -233,23 +274,35 @@ class DQN:
 
         num_episodes: the number of episoded to train for. If 0 or None, then 
                         this trains untill MaxTrainEpisodes (passed in init)
+                        
         render: render the env using env.render() while training
+
+        evalEnv: a gym.Env instance to evaluate on. 
+                If None, then the env passed in
+                init is used to perform the evaluation.
+
+        train_printFn: user provides this function to print more stuff 
+                        (called every printFreq episode), default: None
+
+        eval_printFn: user provides this function to print more stuff 
+                        (called every evalFreq episode), default: None
         """
         
         train_start_time = perf_counter()
+        evalEnv = self.trainingEnv if evalEnv is None else evalEnv
         stop_episode = self.current_episode+num_episodes if num_episodes \
                         else self.MaxTrainEpisodes
 
         for episode in range(self.current_episode, stop_episode):
             
             done = False
-            observation = self.env.reset()
+            observation = self.trainingEnv.reset()
             info = None # no initial info from gym.Env.reset
             current_start_time = perf_counter()
             self.current_episode = episode
     
             # render
-            if render: self.env.render()
+            if render: self.trainingEnv.render()
 
             # counters
             k = 0 # count the number of calls to select-action
@@ -265,24 +318,25 @@ class DQN:
                             torch.tensor([state], dtype=self.float_dtype, device=self.device))
 
                 # select action and repeat the action skipStep number of times
-                nextState, skip_trajectory, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, skip_trajectory, sumReward, done, stepsTaken = self._take_steps(self.trainingEnv,action)
 
                 # make transitions and push observation in replay buffer
                 transitions = self.make_transitions(skip_trajectory, state, action, nextState)
                 for _state, _action, _reward, _nextState, _done in transitions:
-                    _state, _action, _reward, _nextState, _done = self._astensor(_state, _action, _reward, _nextState, _done)
+                    _state, _action, _reward, _nextState, _done = \
+                            self._astensor(_state, _action, _reward, _nextState, _done)
                     self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
 
                 # update state, counters and optimize model
                 state = nextState
                 steps += stepsTaken; totalReward += sumReward; k += 1
                 if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: totalLoss += self._optimizeModel()
-                if render: self.env.render() # render
+                if render: self.trainingEnv.render() # render
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
 
             # if required optimize at the episode end and compute average loss
             if not self.optimize_at_end:
-                if k < self.optimize_every_kth_action: print('REDUCE optimize_every_kth_action!!!')
+                assert self.optimize_every_kth_action < k, 'REDUCE optimize_every_kth_action!!!'
                 average_loss = totalLoss / (k//self.optimize_every_kth_action)
             else: average_loss = self._optimizeModel()
 
@@ -296,9 +350,12 @@ class DQN:
             self.replayBuffer.update_params()
 
             # do train-book keeping, print progress-output, eval-output, etc... & save stuff
-            self._performTrainBookKeeping(episode, totalReward, steps, average_loss, perf_counter()-train_start_time)
-            self._print_stuff(episode, totalReward, steps, current_start_time, train_start_time)
+            self._performTrainBookKeeping(episode, totalReward, steps, 
+                                average_loss, perf_counter()-train_start_time)
+            self._printTrainProgress(episode, totalReward, steps, current_start_time, 
+                                    train_start_time, train_printFn)
             self._save_checkpoint_and_resumeables(episode)
+            self._printEvalPogress(episode, eval_printFn, evalEnv)
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -310,12 +367,9 @@ class DQN:
         return self._returnBook()
 
 
-    def evaluate(self, env:gym.Env=None, evalExplortionStrategy:Strategy=greedyAction(), 
-                EvalEpisodes=1, render=False, verbose=True):
+    def evaluate(self, evalExplortionStrategy:Strategy=greedyAction(), 
+                EvalEpisodes=1, render=False, verbose=True, evalEnv:gym.Env=None):
         """ Evaluate the model for EvalEpisodes number of episodes.
-        env: the environment to evaluate on - to be used if the intended env for 
-            eval is not the training env. If None (default) then the env passed
-            in the init is used for evaluation.
 
         evalExplortionStrategy: the exploration strategy to use for evaluation.
                                 default: greedy strategy 
@@ -325,7 +379,10 @@ class DQN:
         render: render using env.render()
         
         verbose: print the evaluation result
-        
+
+        evalEnv: the environment to evaluate on - to be used if the intended env for 
+            eval is not the training env. If None (default) then the env passed
+            in the init is used for evaluation.
         -------------------
         returns: a dict containing the total-rewards, steps and wall-times for 
                 each EvalEpisodes"""
@@ -333,7 +390,9 @@ class DQN:
         evalRewards = []
         evalSteps = []
         wallTimes = []
+
         # run evals
+        if not evalEnv: evalEnv = self.trainingEnv
         for evalEpisode in range(EvalEpisodes):
             done = False
             timeStart = perf_counter()
@@ -341,16 +400,16 @@ class DQN:
             steps = 0
             totalReward = 0
             # user defines make_state func to make a state from a list of observations and infos
-            observation,info = self.env.reset(),None # no initial info from usual gym.Env.reset
+            observation,info = evalEnv.reset(),None # no initial info from usual gym.Env.reset
             state = self.make_state([[observation,info,None,done]], None)
             # render
-            if render: self.env.render()
+            if render: evalEnv.render()
             while not done:
                 # take action
                 action = self.evalExplortionStrategy.select_action(self.online_model, torch.tensor([state], 
                                                                 dtype=self.float_dtype, device=self.device))
                 # take action and repeat the action skipStep number of times
-                nextState, _, sumReward, done, stepsTaken = self._take_steps(action)
+                nextState, _, sumReward, done, stepsTaken = self._take_steps(evalEnv, action)
                 # update state and counters
                 state = nextState
                 steps += stepsTaken
@@ -358,7 +417,7 @@ class DQN:
                 # break episode is required
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
                 # render
-                if render: self.env.render()
+                if render: evalEnv.render()
             # decay exploration strategy params
             evalExplortionStrategy.decay()
             # append total episode reward
@@ -456,27 +515,30 @@ class DQN:
         rewards, nextStates, dones = batch['reward'], batch['nextState'], batch['done']
         return states, actions, rewards, nextStates, dones, indices, sampleWeights
 
-    def _take_steps(self, action):
+    def _take_steps(self, env:gym.Env, action:Tensor):
         """ This selects an action using the strategy and state, and then
         executes the action, and handels frame skipping.In frame skipping 
         the same action is repeated and the observations and infos are 
         stored in a list. The next state (where the agent lands) is computed 
         using the make_state upon the trajectory which is as described below.
         
+        env: the env to step through using env.step(action)
+        action: the action to repeate (for skip_steps+1 number of times)
+        ---------------
         this function returns:
-        nextState: the next state
-        trajectory: a list of [next-observation, info, action-taken, reward, done]
-        sumReward: the sum of the rewards seen 
-        done:bool, whether the episode has ended 
-        stepsTaken: the number of frames actually skipped - usefull when
-                    the episode ends during a frame-skip """
+            nextState: the next state
+            trajectory: a list of [next-observation, info, action-taken, reward, done]
+            sumReward: the sum of the rewards seen 
+            done:bool, whether the episode has ended 
+            stepsTaken: the number of frames actually skipped - usefull when
+                        the episode ends during a frame-skip """
         action_taken = action.item()
         sumReward = 0 # to keep track of the total reward in the episode
         stepsTaken = 0 # to keep track of the total steps in the episode
         skip_trajectory = []
         for skipped_step in range(self.skipSteps):
             # repeate the action
-            nextObservation, reward, done, info = self.env.step(action_taken)
+            nextObservation, reward, done, info = env.step(action_taken)
             sumReward += reward
             stepsTaken += 1
             skip_trajectory.append([nextObservation, info, reward, done])
@@ -496,6 +558,12 @@ class DQN:
             if os.stat(os.path.join(self.log_dir, 'trainBook.csv')).st_size == 0:
                 self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
                 self.evalBookCsv.write('episode, reward, steps, wallTime\n')
+
+    def _closeBookKeeping(self):
+        # close the log files
+        if self.log_dir is not None:
+            self.trainBookCsv.close()
+            self.evalBookCsv.close()
 
     def _performTrainBookKeeping(self, episode, reward, steps, loss, wallTime):
         self.trainBook['episode'].append(episode)
@@ -523,29 +591,35 @@ class DQN:
         return state, action, reward, nextState, done
 
     def _returnBook(self):
-        if self.log_dir is not None:
-            # close the log files
-            self.trainBookCsv.close()
-            self.evalBookCsv.close()
         return {'train': self.trainBook,
                 'eval': self.evalBook}
 
-    def _print_stuff(self, episode, totalReward, steps, current_start_time, train_start_time):
-        override = (episode == self.MaxTrainEpisodes-1) # print the last episode always
+    def _printTrainProgress(self, episode, totalReward, steps, 
+            current_start_time, train_start_time, train_printFn):
         # show progress output
+        override = (episode == self.MaxTrainEpisodes-1) # print the last episode always
         if self.printFreq and ((episode % self.printFreq == 0) or override):
             cur_time = perf_counter()
             time_taken = (cur_time - current_start_time)/60
             time_elasped = (perf_counter()-train_start_time)/60
             print(f'episode: {episode}/{self.MaxTrainEpisodes} -> reward: {totalReward},', 
-                f'steps:{steps}, time-taken: {time_taken:.2f}min, time-elasped: {time_elasped:.2f}min')
-            if self.user_printFn is not None: self.user_printFn() # call the user-printing function
+                    f'steps:{steps}, time-taken: {time_taken:.2f}min,',
+                    f'time-elasped: {time_elasped:.2f}min')
+            if train_printFn is not None: train_printFn() # call the user-printing function
+
+    def _printEvalPogress(self, episode, eval_printFn, evalEnv):
         # evaluate the agent and do eval-book keepings
-        if self.eval_episode and ((episode % self.eval_episode == 0) or override):
-            eval_info = self.evaluate(self.evalExplortionStrategy, verbose=False)
+        override = (episode == self.MaxTrainEpisodes-1)
+        if self.evalFreq and ((episode % self.evalFreq == 0) or override):
+            eval_info = self.evaluate(self.evalExplortionStrategy, 
+                            EvalEpisodes=1, verbose=False, evalEnv=evalEnv)
             evalStats = [mean(eval_info[x]) for x in ['rewards','steps','wallTimes']]
             self._performEvalBookKeeping(episode, *evalStats)
-            print(f'eval-episode: {episode} -> reward: {evalStats[0]}, steps: {evalStats[1]}, wall-time: {evalStats[2]}')
+            print('\n==================================================')
+            print(f'eval-episode: {episode} -> reward: {evalStats[0]},',
+                f'steps: {evalStats[1]}, wall-time: {evalStats[2]:.2f}s')
+            if eval_printFn is not None: eval_printFn()
+            print('==================================================\n')
 
     def _save_checkpoint_and_resumeables(self, episode):
         if not self.log_dir: return
@@ -614,3 +688,8 @@ class DQN:
 
         return print(f'Successfully loaded stuff from {resume_dir}!',
                     '\nReady to resume training.')
+
+
+    def __delete__(self):
+        # close all IO stuff
+        self._closeBookKeeping()

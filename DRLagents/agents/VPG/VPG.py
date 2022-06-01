@@ -194,7 +194,6 @@ class VPG:
         for episode in range(self.MaxTrainEpisodes):
 
             # get the trajectory segments & optimize models
-            # trajectory, totalReward, total_steps = self._genetate_trajectory()
             for output_tupple in self._genetate_trajectory(render):
                 trajectory, totalReward, total_steps = output_tupple
                 policyloss, valueloss, avgEntropy = self._optimizeAgent(trajectory)
@@ -314,7 +313,7 @@ class VPG:
 
         # compute the action-advantages
         action_advantages = partial_returns - values[:-1] if not self.use_gae else \
-                        compute_GAE(values, trajectory['reward'], self.gamma, self.lamda)
+            compute_GAE(values, trajectory['reward'], trajectory['done'], self.gamma, self.lamda)
 
         # compute policy-loss
         policyLoss = - (action_advantages.detach()*action_logprobs).mean() + self.beta*mean_entropy
@@ -354,14 +353,15 @@ class VPG:
                 its length 1 more than actions, rewards and 
                 partial returns """
         
-        trajectory = {'state':[], 'action':[], 'reward':[], 'log_prob':[], 'entropy':[]}
+        trajectory = {'state':[], 'action':[], 'reward':[], 
+                    'log_prob':[], 'entropy':[], 'done':[]}
 
         # bookeeping counters
         total_reward = 0.0
         total_steps = 0
         total_appends = 0 # track length of original trajectory
 
-        done = False
+        done = None
         observation = self.env.reset()
         info = None # no initial info from gym.Env.reset
 
@@ -383,6 +383,7 @@ class VPG:
             trajectory['log_prob'].append(log_prob) # log-probabliy of taken action
             trajectory['entropy'].append(entropy) # entropy of action probablities
             trajectory['reward'].append(sumReward)
+            trajectory['done'].append(done)
             # update counters
             total_reward+=sumReward
             total_steps+=stepsTaken
@@ -435,11 +436,19 @@ class VPG:
         using the last observed observation and info to maintain the same input
         size. 
 
-        this function returns:
-        nextState: the next state
-        sumReward: the sum of the rewards seen 
-        done:bool, whether the episode has ended 
-        stepsTaken: the number of frames actually skipped - usefull when
+        ### parameters
+        1. action: Tensor
+                - action to repeate while frame-skipping
+
+        ### returns:
+        1. nextState: 
+                - the next state
+        2. sumReward: float
+                - the sum of the rewards seen 
+        3. done:bool
+                - whether the episode has ended 
+        4. stepsTaken: int
+                - the number of frames actually skipped - usefull when
                     the episode ends during a frame-skip """
 
         action_taken = action.item()
