@@ -272,20 +272,36 @@ class DQN:
         then it continues from the last episode. This functionality is usefull
         when we would like to do evaluation on a different environment.
 
-        num_episodes: the number of episoded to train for. If 0 or None, then 
-                        this trains untill MaxTrainEpisodes (passed in init)
+        1. num_episodes: int (default None)
+                - the number of episodes to train for. 
+                - If 0 or None, then this trains until 
+                    MaxTrainEpisodes (passed in init)
                         
-        render: render the env using env.render() while training
+        2. render: bool (default False)
+                - render the env using env.render() while training
 
-        evalEnv: a gym.Env instance to evaluate on. 
-                If None, then the env passed in
-                init is used to perform the evaluation.
+        3. evalEnv: gym.Env (default None)
+                - a gym.Env instance to evaluate on. 
+                - If None, then the env passed in
+                    init is used to perform the evaluation.
 
-        train_printFn: user provides this function to print more stuff 
-                        (called every printFreq episode), default: None
+        4. train_printFn: function (default None)
+                - user provides this function to print more stuff 
+                - takes no arguments
+                - called every printFreq episode
 
-        eval_printFn: user provides this function to print more stuff 
-                        (called every evalFreq episode), default: None
+        5. eval_printFn: function (default None) 
+                - user provides this function to print more stuff 
+                - takes no arguments
+                - called every evalFreq episode
+        
+        ### returns
+            - train_history: dict[str, dict[str, list]]
+                    - keys are 'train' and 'eval'
+                    - train_history['train'] is a dict and contians record of
+                    the reward, loss, steps and walltime for all train episodes
+                    - train_history['eval'] is a dict and contains record of the
+                    reward, steps and walltime for all the evaluation episodes
         """
         
         train_start_time = perf_counter()
