@@ -23,7 +23,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
-                bufferType='replace-min', beta_schedule=None, numpy_parallelized=False, print_args=False):
+                bufferType='replace-min', beta_schedule=None, print_args=False):
         """
         NOTE: the dtype for the buffer is configured from the first sample stored
 
@@ -42,9 +42,6 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
                     circular: buffer as priority sampling in a circular deque (windowed memory)
                     replace-min: replace the experience with min priority if full.
 
-        numpy_parallelized: priority sampling using parallel array comparison with numpy 
-                            -numpy_parallelized may be inefficient for large bufferSize
-
         Example for beta_schedule can be found at ReplayBuffers.helper_funcs.make_exponential_beta_schedule
         """
 
@@ -54,7 +51,6 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self.bufferSize = bufferSize
         self.beta, self.beta_rate = beta, beta_rate
         self.alpha, self.beta_schedule = alpha, beta_schedule
-        self.numpy_parallelized = numpy_parallelized
         self.replace_min =  bufferType == 'replace-min'
 
         # description of the experience tupple
@@ -115,8 +111,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         
          """  
         # sample the buffer according to the priorities
-        indices = self._numpy_parallized_weighted_sampling(batchSize) \
-                    if self.numpy_parallelized else self._weighted_sampling(batchSize)
+        indices = self._weighted_sampling(batchSize)
 
         # compute importance sampling weights - following the paper
         prob_min = self._get_min()/self._get_sum()
@@ -160,15 +155,6 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
             idx = self._find_predecessor(prefix_sum)
             indices[i] = idx
 
-        return indices
-
-
-    def _numpy_parallized_weighted_sampling(self, batchSize):
-        """parallelization with numpy, not good tc for large buffers"""
-        all_probs = self._priority_min[self.bufferSize:self.size+self.bufferSize][:,0]
-        cum_probs = np.cumsum(all_probs)[:,None]
-        p = np.random.rand(1,batchSize) * self._get_sum()
-        indices = np.argmax(cum_probs > p, axis=0)
         return indices
 
 
