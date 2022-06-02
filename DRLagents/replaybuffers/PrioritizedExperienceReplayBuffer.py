@@ -1,13 +1,12 @@
 # refer https://nn.labml.ai/rl/dqn/replay_buffer.html
-
 import random
-import numpy as np
 
+import numpy as np
 import torch
 from torch import Tensor
 
-from . import ReplayBuffer
 from ..utils import printDict
+from . import ReplayBuffer
 
 
 class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
@@ -23,26 +22,41 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
-                bufferType='replace-min', beta_schedule=None, print_args=False):
+                bufferType='replace-min', beta_schedule=None, print_args=False,
+                nprocesses=0):
         """
-        NOTE: the dtype for the buffer is configured from the first sample stored
+        NOTE: the dtype for the buffer is infered from the first sample stored
 
-        alpha: interpolates from uniform sampling (alpha = 0) to full prioritized sampling (alpha = 1).
+        ### parameters
+        1. alpha: float 
+                - interpolates from uniform sampling (alpha = 0) to full prioritized sampling (alpha = 1).
+                - the value of alpha would be different for different training environments.
 
-        beta: compensates for the bias induced by priorited replay, fully compensates when beta = 1. 
-                unbiased nature is more important towards end of training.
+        2. beta: float (default 0.2)
+                - compensates for the bias induced by priorited replay.
+                - fully compensates when beta = 1. unbiased nature is more important 
+                towards end of training.
 
-        beta_rate: the inverse time-constant for beta increase. By default the beta is updated as 
-                    ''beta_ <- min(1, beta + episode*beta_rate)'' at every sampling step.
+        3. beta_rate: float (default 0.0001)
+                - the inverse time-constant for beta increase. 
+                - By default the beta is updated as 
+                    ''beta_ <- min(1, beta + episode*beta_rate)'' at 
+                    every new episode.
                     
-        beta_schedule: function that takes the step number and returns the next beta
-                        this is called at every time sample is produced. Overides beta & beta_rate.
+        4. bufferType: str (default 'replace-min')
+                - either 'circular' or 'replace-min'
+                - circular: buffer as priority sampling in a circular deque (windowed memory)
+                - replace-min: replace the experience with min priority if full.
+    
+        5. beta_schedule: function (default None)
+                - that takes the episode number and returns the next beta
+                this is called at every time sample is produced. 
+                - Overides beta & beta_rate.
+                - Example for beta_schedule can be found at \\
+                    ReplayBuffers.helper_funcs.make_exponential_beta_schedule
 
-        bufferType: either 'circular' or 'replace-min'
-                    circular: buffer as priority sampling in a circular deque (windowed memory)
-                    replace-min: replace the experience with min priority if full.
-
-        Example for beta_schedule can be found at ReplayBuffers.helper_funcs.make_exponential_beta_schedule
+        6. nprocesses: int (default 0)
+                - leverage parallel processing to quickly sample from the buffer. 
         """
 
         assert bufferType in ['circular', 'replace-min']
@@ -103,12 +117,18 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     def sample(self, batchSize:int):
         """ samples a batchSize number of experiences and returns
         a tupple (samples, indices, weights)
+
+        ### parameters
+        batchSize: int
         
-        sample: {  'state':tf.Tensor, 'action':tf.Tensor, 'reward':tf.Tensor, 
+        ### returns
+        - sample: dict[str, Tensor]
+                - {'state':tf.Tensor, 'action':tf.Tensor, 'reward':tf.Tensor, 
                     'nextState':tf.Tensor, 'done':tf.Tensor} 
-        indices: the sampled indices
-        weights: normalized importance sampling weights
-        
+        - indices: np.array
+                - the sampled indices
+        - weights: np.array
+                - normalized importance sampling weights
          """  
         # sample the buffer according to the priorities
         indices = self._weighted_sampling(batchSize)
@@ -138,15 +158,26 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
 
     def update_params(self):
-        # increment episode counter
-        self.episode += 1
-        
-        # update beta
-        self.beta = self.beta_schedule(self.episode)
+        self.episode += 1 # increment episode counter
+        self.beta = self.beta_schedule(self.episode) # update beta
 
 
     def _weighted_sampling(self, batchSize):
-        """ sample samples according to priorities """
+        """ weighted sampling according to priorities
+        Assumed that sumTree is 1-indexed. 
+        
+        parameters:
+            - self.sumTree: array
+                - represents the priorities
+                - a complete binary tree in form of array
+                - 1-indexed, i.e., sum is stored at sumTree[1]
+            - batchSize: int
+                - number of samples to draw
+
+        returns: 
+            - sampled indices: 
+                    - idx retured in range [0, len(sumTree)//2-1]
+                    - can be directly indexed into buffer """
         # ... maybe paralelize this? multiprocessing is not working
         indices = np.zeros(batchSize, dtype=int)
         for i in range(batchSize):
@@ -159,7 +190,21 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
 
     def _find_predecessor(self, prefix_sum):
-        # find the largest idx such that the sum of probablities till idx is <= cumilative_prob
+        """ find the idx (leaf) such that the 
+        idx has the smallest value >= prefix_sum
+        ### parameters 
+            - self.sumTree: array
+                - represents the priorities
+                - a complete binary tree in form of array
+                - 1-indexed, i.e., sum is stored at sumTree[1]
+            - prefix_sum: float
+                - finds the leaf node just smaller than
+                prefix_sum
+        
+        ### returns
+            - predecessor: int
+                - index of the predecessor among the leafs
+        """
         idx = 1
         while idx < self.bufferSize:
             if self._priority_sum[2*idx] >= prefix_sum:
