@@ -171,7 +171,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     def __len__(self):
         return self.size
 
-    
+
     def store(self, state:Tensor, action:Tensor, 
                 reward:Tensor, nextState:Tensor, done:Tensor):
         """ store the experience-tupple: state, action, reward, nextState, done
@@ -180,7 +180,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         experienceTupple = [state, action, reward, nextState, done]
 
         # lazy init buffer
-        if self.buffer is None: self.buffer = self._lazy_buffer_init(experienceTupple, self._tuppleDesc, self.bufferSize)
+        if self.buffer is None: self.buffer = self._lazy_buffer_init(
+                    experienceTupple, self._tuppleDesc, self.bufferSize)
 
         idx = self.nextidx  
 
