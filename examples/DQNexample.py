@@ -33,7 +33,7 @@ class net(nn.Module):
         return t
 
 # change buffertype to 'prioritized' for PER-buffer
-def run_DQN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
+def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
 
     ## choose a replay buffer or implement your own
     if buffertype == 'uniform':
@@ -41,7 +41,7 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
         replayBuffer = ExperienceReplayBuffer(bufferSize=10000) # for uniform sampling 
     elif buffertype == 'prioritized':
         MTE=250
-        replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, 
+        replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000,
                             alpha=0.6, beta=0.2, beta_rate=0.004) # prioritized sampling
 
     # init necessities
@@ -52,6 +52,7 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
 
     # define the training strategy DQN in our example
     DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, 
+                    # optimize_every_kth_action=-1, num_gradient_steps=10,
                     MaxTrainEpisodes=MTE, skipSteps=0, evalFreq=50, device=device)
                     # might want to do MaxTrainEpisodes=250 for prioritized buffer
 
