@@ -1,12 +1,15 @@
 # refer https://nn.labml.ai/rl/dqn/replay_buffer.html
+from queue import Queue
 import random
+from threading import Thread
+import time
 
 import numpy as np
 import torch
 from torch import Tensor
 
-from ..utils import printDict
-from . import ReplayBuffer
+from DRLagents.utils import printDict
+from DRLagents.replaybuffers import ReplayBuffer
 
 
 class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
@@ -22,7 +25,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
-                bufferType='replace-min', beta_schedule=None, print_args=False):
+                bufferType='replace-min', beta_schedule=None, print_args=False, 
+                nprefetch=0, nthreads=5):
         """
         NOTE: the dtype for the buffer is infered from the first sample stored
 
@@ -53,6 +57,15 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
                 - Overides beta & beta_rate.
                 - Example for beta_schedule can be found at \\
                     ReplayBuffers.helper_funcs.make_exponential_beta_schedule
+
+        6. nprefetch: int (default 0)
+                - the number of batches to prefetch. 0 means no prefetching
+                - preferable only when there is a bunch of sample calls
+                like 100 gradient steps at the end of episode. Otherwise
+                the performance is not improved with prefetch.
+
+        7. nthreads: int (default 5)
+                - the number of threads to be used for prefetching
         """
         super().__init__()
         assert bufferType in ['circular', 'replace-min']
@@ -82,7 +95,18 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         # init the beta and episode counter
         self.episode = 0 
         self.beta = self.beta_schedule(0)
+        self.nprefetch = nprefetch
+        self.nthreads = nthreads
+        self.threads_started = False
 
+    def __len__(self):
+        return self.size
+
+    def __del__(self):
+        self.threads_started = False
+        if self.nprefetch > 0:
+            for t in self.thread_prefetch:
+                t.join()
 
     def _weighted_sampling(self, batchSize):
         """ weighted sampling according to priorities
@@ -168,8 +192,39 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     def _default_beta_schedule(self, episode):
         return min(1, self.beta + episode*self.beta_rate)
 
-    def __len__(self):
-        return self.size
+    def _init_prefetch_thread(self, batchSize):
+        if self.threads_started: return
+        self.threads_started = True
+        self.thread_batches  = Queue(maxsize=self.nprefetch)
+        self.thread_prefetch = [
+            Thread(target=self._prefetch, args=(i,batchSize)) 
+            for i in range(self.nthreads)]
+        for thread in self.thread_prefetch:
+            thread.setDaemon(True)
+            thread.start()
+            time.sleep(0.01) # for nice printing
+
+    def _prefetch(self, i, batchSize):
+        print(f'daemon thread {i} started')
+        while self.threads_started:
+            self.thread_batches.put(self._sample_util(batchSize))
+        print(f'daemon thread {i} started')
+
+    def _sample_util(self, batchSize):
+        # sample the buffer according to the priorities
+        indices = self._weighted_sampling(batchSize)
+
+        # compute importance sampling weights - following the paper
+        prob_min = self._get_min()/self._get_sum()
+        max_weight = (self.size * prob_min) ** (-self.beta) # for normalization
+        probs = self._priority_sum[indices + self.bufferSize] / self._get_sum()
+        weights = (probs * self.size) ** (-self.beta)
+        weights = weights / max_weight # normalized importance sampling weights
+
+        # get the experiences
+        samples = {k:self.buffer[k][indices] for k in self._tuppleDesc}
+
+        return samples, indices, weights
 
 
     def store(self, state:Tensor, action:Tensor, 
@@ -198,7 +253,6 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self._update_priority_min(idx, priority_alpha)
         self._update_sum_priority(idx, priority_alpha)
 
-
     def sample(self, batchSize:int):
         """ samples a batchSize number of experiences and returns
         a tupple (samples, indices, weights)
@@ -215,22 +269,10 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         - weights: np.array
                 - normalized importance sampling weights
          """  
-
-        # sample the buffer according to the priorities
-        indices = self._weighted_sampling(batchSize)
-
-        # compute importance sampling weights - following the paper
-        prob_min = self._get_min()/self._get_sum()
-        max_weight = (self.size * prob_min) ** (-self.beta) # for normalization
-        probs = self._priority_sum[indices + self.bufferSize] / self._get_sum()
-        weights = (probs * self.size) ** (-self.beta)
-        weights = weights / max_weight # normalized importance sampling weights
-
-        # get the experiences
-        samples = {k:self.buffer[k][indices] for k in self._tuppleDesc}
-
-        return samples, indices, weights
-
+        if self.nprefetch == 0: return self._sample_util(batchSize)
+        self._init_prefetch_thread(batchSize)
+        # print('\rsamp ',self.thread_batches.qsize(), end='     ')
+        return self.thread_batches.get()
 
     def update(self, indices, priorities:torch.Tensor):
         """priorities should be all positive"""
@@ -242,7 +284,6 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
             self._update_sum_priority(idx, priority_alpha)
             self._update_priority_min(idx, priority_alpha)
 
-
     def update_params(self):
         self.episode += 1 # increment episode counter
         self.beta = self.beta_schedule(self.episode) # update beta
@@ -252,8 +293,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         state_dict = {k:v for k,v in self.__dict__.items() if not callable(v)}
 
         # dont keep threading stuff!
-        for key in state_dict.keys():
-            if key.startswith('threading_'):
+        for key in list(state_dict.keys()):
+            if key.startswith('thread_'):
                 del state_dict[key]
 
         return state_dict
