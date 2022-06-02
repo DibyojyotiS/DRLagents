@@ -1,6 +1,4 @@
 # base class for replay buffers all replay buffers must have the functions store and sample
-
-import pickle
 import torch
 
 

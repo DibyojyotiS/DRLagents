@@ -33,12 +33,7 @@ class net(nn.Module):
         return t
 
 # change buffertype to 'prioritized' for PER-buffer
-def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
-    # init necessities
-    Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
-    optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
-    trainExplortionStrategy = epsilonGreedyAction(0.5, 0.05, 100)
-    evalExplortionStrategy = greedyAction()
+def run_DQN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
 
     ## choose a replay buffer or implement your own
     if buffertype == 'uniform':
@@ -47,11 +42,17 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
     elif buffertype == 'prioritized':
         MTE=250
         replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, 
-                            alpha=0.6, beta=0.2, beta_rate=0.002) # prioritized sampling
-        
+                            alpha=0.6, beta=0.2, beta_rate=0.004) # prioritized sampling
+
+    # init necessities
+    Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
+    optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
+    trainExplortionStrategy = epsilonGreedyAction(0.5, 0.3, MTE)
+    evalExplortionStrategy = greedyAction()
+
     # define the training strategy DQN in our example
     DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, 
-                    MaxTrainEpisodes=MTE, skipSteps=1, evalFreq=50, device=device)
+                    MaxTrainEpisodes=MTE, skipSteps=0, evalFreq=50, device=device)
                     # might want to do MaxTrainEpisodes=250 for prioritized buffer
 
     # train the model

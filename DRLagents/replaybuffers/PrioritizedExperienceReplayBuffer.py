@@ -22,8 +22,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
-                bufferType='replace-min', beta_schedule=None, print_args=False,
-                nprocesses=0):
+                bufferType='replace-min', beta_schedule=None, print_args=False):
         """
         NOTE: the dtype for the buffer is infered from the first sample stored
 
@@ -54,11 +53,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
                 - Overides beta & beta_rate.
                 - Example for beta_schedule can be found at \\
                     ReplayBuffers.helper_funcs.make_exponential_beta_schedule
-
-        6. nprocesses: int (default 0)
-                - leverage parallel processing to quickly sample from the buffer. 
         """
-
+        super().__init__()
         assert bufferType in ['circular', 'replace-min']
         if print_args: printDict(self.__class__.__name__, locals())
 
@@ -86,6 +82,94 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         # init the beta and episode counter
         self.episode = 0 
         self.beta = self.beta_schedule(0)
+
+
+    def _weighted_sampling(self, batchSize):
+        """ weighted sampling according to priorities
+        Assumed that sumTree is 1-indexed. 
+        
+        parameters:
+            - self.sumTree: array
+                - represents the priorities
+                - a complete binary tree in form of array
+                - 1-indexed, i.e., sum is stored at sumTree[1]
+            - batchSize: int
+                - number of samples to draw
+
+        returns: 
+            - sampled indices: 
+                    - idx retured in range [0, len(sumTree)//2-1]
+                    - can be directly indexed into buffer """
+        # ... maybe paralelize this? multiprocessing is not working
+        indices = np.zeros(batchSize, dtype=int)
+        for i in range(batchSize):
+            P = random.uniform(0,1) # cumilative prob
+            prefix_sum = P * self._get_sum()
+            idx = self._find_predecessor(prefix_sum)
+            indices[i] = idx
+
+        return indices
+
+    def _find_predecessor(self, prefix_sum):
+        """ find the idx (leaf) such that the 
+        idx has the smallest value >= prefix_sum
+        ### parameters 
+            - self.sumTree: array
+                - represents the priorities
+                - a complete binary tree in form of array
+                - 1-indexed, i.e., sum is stored at sumTree[1]
+            - prefix_sum: float
+                - finds the leaf node just smaller than
+                prefix_sum
+        
+        ### returns
+            - predecessor: int
+                - index of the predecessor among the leafs
+        """
+        idx = 1
+        while idx < self.bufferSize:
+            if self._priority_sum[2*idx] >= prefix_sum:
+                idx = 2*idx
+            else:
+                prefix_sum = prefix_sum - self._priority_sum[2*idx]
+                idx = 2*idx + 1
+
+        return idx - self.bufferSize
+
+    def _update_priority_min(self, idx, priority_alpha):
+        # one indexed in idx -> the min is stored at self.min_priority[1]
+        idx = idx + self.bufferSize
+        self._priority_min[idx][0] = priority_alpha
+        self._priority_min[idx][1] = idx - self.bufferSize
+        while idx >= 2:
+            idx//=2
+            if self._priority_min[2*idx][0] < self._priority_min[2*idx+1][0]:
+                self._priority_min[idx] = self._priority_min[2*idx]
+            else:
+                self._priority_min[idx] = self._priority_min[2*idx+1]
+
+    def _update_sum_priority(self, idx, priority_alpha):
+        # one indexed in idx
+        idx = idx + self.bufferSize
+        self._priority_sum[idx] = priority_alpha
+        while idx >= 2:
+            idx//=2
+            self._priority_sum[idx] = self._priority_sum[2*idx] + self._priority_sum[2*idx+1]
+
+    def _get_sum(self):
+        return self._priority_sum[1]
+
+    def _get_min(self):
+        return self._priority_min[1][0]
+
+    def _get_min_idx(self):
+        return int(self._priority_min[1][1])
+
+    def _default_beta_schedule(self, episode):
+        return min(1, self.beta + episode*self.beta_rate)
+
+    def __len__(self):
+        return self.size
 
     
     def store(self, state:Tensor, action:Tensor, 
@@ -130,6 +214,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         - weights: np.array
                 - normalized importance sampling weights
          """  
+
         # sample the buffer according to the priorities
         indices = self._weighted_sampling(batchSize)
 
@@ -161,94 +246,13 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self.episode += 1 # increment episode counter
         self.beta = self.beta_schedule(self.episode) # update beta
 
+    def state_dict(self):
+        """ all the non-callable params in __dict__ """
+        state_dict = {k:v for k,v in self.__dict__.items() if not callable(v)}
 
-    def _weighted_sampling(self, batchSize):
-        """ weighted sampling according to priorities
-        Assumed that sumTree is 1-indexed. 
-        
-        parameters:
-            - self.sumTree: array
-                - represents the priorities
-                - a complete binary tree in form of array
-                - 1-indexed, i.e., sum is stored at sumTree[1]
-            - batchSize: int
-                - number of samples to draw
+        # dont keep threading stuff!
+        for key in state_dict.keys():
+            if key.startswith('threading_'):
+                del state_dict[key]
 
-        returns: 
-            - sampled indices: 
-                    - idx retured in range [0, len(sumTree)//2-1]
-                    - can be directly indexed into buffer """
-        # ... maybe paralelize this? multiprocessing is not working
-        indices = np.zeros(batchSize, dtype=int)
-        for i in range(batchSize):
-            P = random.uniform(0,1) # cumilative prob
-            prefix_sum = P * self._get_sum()
-            idx = self._find_predecessor(prefix_sum)
-            indices[i] = idx
-
-        return indices
-
-
-    def _find_predecessor(self, prefix_sum):
-        """ find the idx (leaf) such that the 
-        idx has the smallest value >= prefix_sum
-        ### parameters 
-            - self.sumTree: array
-                - represents the priorities
-                - a complete binary tree in form of array
-                - 1-indexed, i.e., sum is stored at sumTree[1]
-            - prefix_sum: float
-                - finds the leaf node just smaller than
-                prefix_sum
-        
-        ### returns
-            - predecessor: int
-                - index of the predecessor among the leafs
-        """
-        idx = 1
-        while idx < self.bufferSize:
-            if self._priority_sum[2*idx] >= prefix_sum:
-                idx = 2*idx
-            else:
-                prefix_sum = prefix_sum - self._priority_sum[2*idx]
-                idx = 2*idx + 1
-
-        return idx - self.bufferSize
-
-    
-    def _update_priority_min(self, idx, priority_alpha):
-        # one indexed in idx -> the min is stored at self.min_priority[1]
-        idx = idx + self.bufferSize
-        self._priority_min[idx][0] = priority_alpha
-        self._priority_min[idx][1] = idx - self.bufferSize
-        while idx >= 2:
-            idx//=2
-            if self._priority_min[2*idx][0] < self._priority_min[2*idx+1][0]:
-                self._priority_min[idx] = self._priority_min[2*idx]
-            else:
-                self._priority_min[idx] = self._priority_min[2*idx+1]
-
-
-    def _update_sum_priority(self, idx, priority_alpha):
-        # one indexed in idx
-        idx = idx + self.bufferSize
-        self._priority_sum[idx] = priority_alpha
-        while idx >= 2:
-            idx//=2
-            self._priority_sum[idx] = self._priority_sum[2*idx] + self._priority_sum[2*idx+1]
-
-
-    def _get_sum(self):
-        return self._priority_sum[1]
-    
-    def _get_min(self):
-        return self._priority_min[1][0]
-
-    def _get_min_idx(self):
-        return int(self._priority_min[1][1])
-
-    def _default_beta_schedule(self, episode):
-        return min(1, self.beta + episode*self.beta_rate)
-
-    def __len__(self):
-        return self.size
+        return state_dict
