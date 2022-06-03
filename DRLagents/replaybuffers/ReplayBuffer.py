@@ -8,6 +8,30 @@ class ReplayBuffer:
     def __init__(self) -> None:
         pass
 
+    def _lazy_buffer_init(self, experience, tuppleDesc, bufferSize):
+        """ inits the buffer as a dict with the keys as in 
+        _tuppleDesc and the values as torch.empty Tensors of 
+        length bufferSize and correct dimensions. The given 
+        experience is a list of tensors. And is used to infer 
+        the dimentions and the devices of the tensors.
+        NOTE: stuff to store must have pre-determined shapes
+        NOTE: Each element of the list experiece must be torch tensors 
+        NOTE: requires_grad=False is assumed """
+        return {x: torch.empty(size=(bufferSize, *experience[i].shape), 
+                                dtype=experience[i].dtype,
+                                requires_grad=False,
+                                device=experience[i].device) 
+                        for i,x in enumerate(tuppleDesc)}
+
+    def state_dict(self):
+        """ all the non-callable params in __dict__ """
+        return {k:v for k,v in self.__dict__.items() if not callable(v)}
+
+    def load_state_dict(self, state_dict):
+        self.__dict__.update(state_dict)
+
+    #### things derived class needs to implement itself ####
+
     def store(self, *args, **kwargs):
         """ stores the experience in the buffer. """
         raise NotImplementedError()
@@ -32,23 +56,3 @@ class ReplayBuffer:
         parameters that should be updated once per episode.
         Doesnot take any arguments and returns nothing """
         pass
-
-    def _lazy_buffer_init(self, experience, tuppleDesc, bufferSize):
-        """ inits the buffer as a dict with the keys as in _tuppleDesc and the values
-        as torch.empty Tensors of length bufferSize and correct dimensions. The given experience
-        is a list of tensors. And is used to infer the dimentions and the devices of the tensors.
-        NOTE: only to be used if the stuff to store has pre-determined shapes
-        NOTE: Each element of the list experiece must be torch tensors 
-        NOTE: requires_grad=False is assumed """
-        return {x: torch.empty(size=(bufferSize, *experience[i].shape), 
-                                dtype=experience[i].dtype,
-                                requires_grad=False,
-                                device=experience[i].device) 
-                        for i,x in enumerate(tuppleDesc)}
-
-    def state_dict(self):
-        """ all the non-callable params in __dict__ """
-        return {k:v for k,v in self.__dict__.items() if not callable(v)}
-
-    def load_state_dict(self, state_dict):
-        self.__dict__.update(state_dict)
