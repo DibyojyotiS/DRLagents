@@ -84,6 +84,7 @@ class epsilonGreedyAction(Strategy):
         if self.decaySteps is None or self.finalepsilon is None: return
         self.episode += 1
         self.epsilon = self.initepsilon*np.exp(-self.decay_factor*self.episode)
+        self.epsilon = max(self.epsilon, self.finalepsilon)
 
 
     def _lazy_init_details(self, model:nn.Module, state:Tensor):

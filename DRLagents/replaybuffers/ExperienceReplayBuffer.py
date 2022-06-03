@@ -2,7 +2,7 @@ import random
 
 import torch
 
-from DRLagents.replaybuffers.helper_funcs.prefetch_utils import prefetch_decorator, prefetch_wrapper
+from DRLagents.replaybuffers.helper_funcs.prefetch_utils import threading_prefetch_decorator, threading_prefetch_wrapper
 
 from . import ReplayBuffer
 from ..utils import printDict
@@ -41,7 +41,7 @@ class ExperienceReplayBuffer(ReplayBuffer):
         
         self.nprefetch = nprefetch
         self.nthreads = nthreads
-        self.sample = prefetch_wrapper(self.sample, nprefetch, nthreads)
+        self.sample = threading_prefetch_wrapper(self.sample, nprefetch, nthreads)
     
     def __len__(self):
         return self.size
@@ -70,5 +70,5 @@ class ExperienceReplayBuffer(ReplayBuffer):
         self.__dict__.update(state_dict)
         # do the prefetch init, 
         # prefetch_wrapper handles nprefetch==0
-        self.sample = prefetch_wrapper(self.sample, 
+        self.sample = threading_prefetch_wrapper(self.sample, 
                         self.nprefetch,self.nthreads)

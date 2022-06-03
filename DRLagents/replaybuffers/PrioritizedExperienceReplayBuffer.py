@@ -7,7 +7,7 @@ import time
 import numpy as np
 import torch
 from torch import Tensor
-from DRLagents.replaybuffers.helper_funcs.prefetch_utils import prefetch_wrapper
+from DRLagents.replaybuffers.helper_funcs.prefetch_utils import threading_prefetch_wrapper
 
 from DRLagents.utils import printDict
 from DRLagents.replaybuffers import ReplayBuffer
@@ -97,7 +97,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         # init prefetching (prefetch_wrapper handles nprefetch==0)
         self.nprefetch = nprefetch
         self.nthreads = nthreads
-        self.sample = prefetch_wrapper(self.sample, nprefetch, nthreads)
+        self.sample = threading_prefetch_wrapper(self.sample, nprefetch, nthreads)
 
     def __len__(self):
         return self.size
@@ -263,5 +263,5 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self.__dict__.update(state_dict)
         # do the prefetch init, 
         # prefetch_wrapper handles nprefetch==0
-        self.sample = prefetch_wrapper(self.sample, 
+        self.sample = threading_prefetch_wrapper(self.sample, 
                         self.nprefetch,self.nthreads)

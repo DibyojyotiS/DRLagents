@@ -2,7 +2,7 @@ from queue import Queue
 from threading import Thread
 import time
 
-def prefetch_wrapper(func, nprefetch=0, nthreads=5):
+def threading_prefetch_wrapper(func, nprefetch=0, nthreads=5):
     """ To prefetch somethings in advance using 
     multi-threading daemon threads. \\
     The threads are started only after the first 
@@ -54,7 +54,7 @@ def prefetch_wrapper(func, nprefetch=0, nthreads=5):
 
     return fetcher
 
-def prefetch_decorator(nprefetch=0, nthreads=5):
+def threading_prefetch_decorator(nprefetch=0, nthreads=5):
     """ a decorator to prefetch stuffs using 
     multiple daemon threads. \\
     The threads are started only after the first
@@ -69,5 +69,5 @@ def prefetch_decorator(nprefetch=0, nthreads=5):
     2. nthreads: int (default 5)
             - the number of daemon threads  """
     def wrapper(func):
-        return prefetch_wrapper(func, nprefetch, nthreads)
+        return threading_prefetch_wrapper(func, nprefetch, nthreads)
     return wrapper
