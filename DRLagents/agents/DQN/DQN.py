@@ -101,7 +101,8 @@ class DQN:
 
         ### optional training necessities
 
-        11. skipSteps: int (default 0)
+        11. skipSteps: int or function (default 0)
+                - can be a function that takes in episode and returns an int
                 - the number of steps to repeate the previous action 
                 - the model not optimized during skipped steps
                 - usually the a state-transition thus produced as: 
@@ -241,7 +242,6 @@ class DQN:
         self.evalExplortionStrategy = evalExplortionStrategy
         
         # miscellaneous args
-        self.skipSteps = skipSteps + 1
         self.polyak_average = polyak_average
         self.tau = polyak_tau
         self.breakAtReward = breakAtReward
@@ -250,6 +250,8 @@ class DQN:
         self.snapshot_episode = snapshot_episode
         self.float_dtype = float_dtype
         self.resumeable_snapshot = resumeable_snapshot
+        self.skipSteps = skipSteps if type(skipSteps) is not int \
+                        else lambda episode: skipSteps
 
         self.log_dir = log_dir
         if log_dir is not None:
@@ -560,7 +562,7 @@ class DQN:
         sumReward = 0 # to keep track of the total reward in the episode
         stepsTaken = 0 # to keep track of the total steps in the episode
         skip_trajectory = []
-        for skipped_step in range(self.skipSteps):
+        for skipped_step in range(self.skipSteps(self.current_episode) + 1):
             # repeate the action
             nextObservation, reward, done, info = env.step(action_taken)
             sumReward += reward
