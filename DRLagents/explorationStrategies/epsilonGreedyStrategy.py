@@ -17,24 +17,41 @@ class epsilonGreedyAction(Strategy):
         doesnot decay epsilon if decaySteps is None'''
 
     def __init__(self, epsilon=0.5, finalepsilon=None, 
-                    decaySteps=None, outputs_LogProbs=False, 
-                    print_args=False) -> None:
+                    decaySteps=None, decay_type='lin',
+                    outputs_LogProbs=False, print_args=False) -> None:
+        """ 
+        ### parameters
+        - epsilon: float (default 0.5) must be in [0,1)
+        - finalepsilon: float (default None)
+                - must be greater than 0
+                - epsilon not decayed if finalepsilon is None
+        - decaySteps: int (default None)
+                - #calls to decay(...) in which epsilon decays to finalepsilon
+                - if None, epsilon is not decayed
+        - decay_type: str (default 'lin')
+                - if 'lin' then epsilon decayed linearly
+                - if 'exp' then epsilon decayer exponentialy
+        - outputs_LogProbs: bool (default False)
+                - if the model outputs the log-probablities
+                - required for computing entropy for Policy Gradient methods
+        - print_args: bool (default False)
+                - print the agruments passed in init
+         """
 
         if print_args: printDict(self.__class__.__name__, locals())
+        assert decay_type in ['lin', 'exp']
 
         self.outputs_LogProbs = outputs_LogProbs
         self.epsilon = epsilon
         self.initepsilon = epsilon
         self.finalepsilon = finalepsilon
         self.decaySteps = decaySteps
+        self.decay_type = decay_type
 
         # required inits
         self.episode = 0
         self.output_shape = None # will be updated lazily
         self.device = None # will be updated lazily
-        if not (self.decaySteps is None or self.finalepsilon is None):
-            self.decay_factor = (np.math.log(epsilon) - np.math.log(finalepsilon))/decaySteps
-
 
     def select_action(self, model:nn.Module, state:Tensor, 
                         logProb_n_entropy=False, grad=False) \
@@ -83,12 +100,29 @@ class epsilonGreedyAction(Strategy):
     def decay(self):
         if self.decaySteps is None or self.finalepsilon is None: return
         self.episode += 1
-        self.epsilon = self.initepsilon*np.exp(-self.decay_factor*self.episode)
-        self.epsilon = max(self.epsilon, self.finalepsilon)
-
+        if self.decay_type == 'exp':
+            self.epsilon = self._exponential_decay(self.episode)
+        else:
+            self.epsilon = self._linear_decay(self.episode)
 
     def _lazy_init_details(self, model:nn.Module, state:Tensor):
         ''' to lazily init the output shape, device of the model '''
         predictions = model(state)
         self.output_shape = predictions.shape
         self.device = predictions.device
+
+    exp_decay_factor = None
+    def _exponential_decay(self, episode):
+        if self.exp_decay_factor is None:
+            self.exp_decay_factor = (np.math.log(epsilon) - \
+                np.math.log(self.finalepsilon))/self.decaySteps
+        epsilon = self.initepsilon*np.exp(-self.exp_decay_factor*episode)
+        return max(epsilon, self.finalepsilon)
+
+    lin_decay_factor = None
+    def _linear_decay(self,episode):
+        if self.lin_decay_factor is None:
+            self.lin_decay_factor = \
+                (self.initepsilon - self.finalepsilon)/self.decaySteps
+        epsilon = self.initepsilon - self.lin_decay_factor * episode
+        return max(epsilon, self.finalepsilon)
