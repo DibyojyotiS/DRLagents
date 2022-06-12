@@ -27,7 +27,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
                 bufferType='replace-min', beta_schedule=None, print_args=False, 
-                nprefetch=0, nthreads=5):
+                nprefetch=0, nthreads=1):
         """
         NOTE: the dtype for the buffer is infered from the first sample stored
 
