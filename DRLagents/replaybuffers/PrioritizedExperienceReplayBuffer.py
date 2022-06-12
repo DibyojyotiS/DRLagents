@@ -99,8 +99,15 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self.nthreads = nthreads
         self.sample = threading_prefetch_wrapper(self.sample, nprefetch, nthreads)
 
+        # finally
+        self._announce_stuff()
+
     def __len__(self):
         return self.size
+
+    def _announce_stuff(self):
+        if self.replace_min: print('PrioritizedBuffer of type replace-min')
+        else: print('PrioritizedBuffer of type circular') 
 
     def _weighted_sampling(self, batchSize):
         """ weighted sampling according to priorities
