@@ -50,7 +50,7 @@ def threading_prefetch_wrapper(func, nprefetch=0, nthreads=1):
     # the threading fetcher (start threads on 1st call)
     def fetcher(*args, **kwargs):
         if not threads_started: start_threads(*args, **kwargs)
-        # print(prefetch_queue.qsize())
+        # print(prefetch_queue.qsize(),end='\r')
         return prefetch_queue.get()
 
     return fetcher
