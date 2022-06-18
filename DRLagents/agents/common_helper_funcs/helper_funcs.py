@@ -51,7 +51,7 @@ def default_make_transitions(trajectory, state, action, nextState):
     
     ### parameters
     1. trajectory: list
-            - which is a list of [next-observation, info, reward, done]
+            - which is a list of [next-observation, reward, done, info]
             - this is the trajectory while skipping-frames
             - all the observtions, infos, etc are those of the skipped frames
     2. state: 
@@ -65,7 +65,7 @@ def default_make_transitions(trajectory, state, action, nextState):
         - transitions: list
                 - state-transitions of form [state, action, reward, next-state, done]
     '''
-    reward = sum([r for o,i,r,d in trajectory])
+    reward = sum([r for o,r,i,d in trajectory])
     done = trajectory[-1][-1]
     return [[state, action, reward, nextState, done]]
 
@@ -76,7 +76,7 @@ def default_make_state(trajectory:list, action_taken):
     
     ### parameters
     1. trajectory: list
-            - which is a list of [next-observation, info, reward, done]
+            - which is a list of [next-observation, reward, done, info]
             - this is the trajectory while skipping-frames
             - all the observtions, infos, etc are those of the skipped frames
     2. action_taken:
