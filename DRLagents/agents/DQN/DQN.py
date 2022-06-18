@@ -120,7 +120,7 @@ class DQN:
         
         14. make_state: function (default default_make_state)
                 - inputs:
-                    - trajectory: list of [next-observation, info, reward, done].
+                    - trajectory: list of [next-observation, reward, done, info].
                         If skipSteps is 0, then trajectory will be of length 1.
                     - action: the action repeated during the trajectory. 
                 - Since gym.Env.reset returns only the first observation, this function 
@@ -132,19 +132,14 @@ class DQN:
 
         15. make_transitions: function (default default_make_state)
                 - inputs: (trajectory, state, action, mextState)
-                        - trajectory: which is a list of [next-observation, info, reward, done].
+                        - trajectory: which is a list of [next-observation, reward, done, info].
                             If skipSteps is 0, then trajectory will be of length 1.
                         - state: the state before the begenning of the frame-skipping
                         - action: the action repeated for frame-skipping
                         - nextState: the state after the frame-skipping
+                    Should handle trajectories of variable lengths.
                 - creates a list of state-transitions of the form [state, action, reward, next-state, done]
-                - Inputs are- trajectory, state, action, nextState
-                                trajectory: which is a list of [observation, info, reward, done]
-                                state: the state before the begenning of the frame-skipping
-                                action: the action used during the frame-skipping
-                                nextState: the state after the frame-skipping
-                            Should handle trajectories of variable lengths.
-
+                            
         16. loss: function (default weighted_MSE)
                 - inputs: (X, target, weights[optional])
                 - if the replayBuffer.sample(...) outputs the sampleWeights 
@@ -552,7 +547,7 @@ class DQN:
         ---------------
         this function returns:
             nextState: the next state
-            trajectory: a list of [next-observation, info, action-taken, reward, done]
+            trajectory: a list of [next-observation, reward, done, info]
             sumReward: the sum of the rewards seen 
             done:bool, whether the episode has ended 
             stepsTaken: the number of frames actually skipped - usefull when
@@ -566,7 +561,7 @@ class DQN:
             nextObservation, reward, done, info = env.step(action_taken)
             sumReward += reward
             stepsTaken += 1
-            skip_trajectory.append([nextObservation, info, reward, done])
+            skip_trajectory.append([nextObservation, reward, done, info])
             if done: break
         # compute the next state 
         nextState = self.make_state(skip_trajectory, action_taken)
