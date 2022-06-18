@@ -109,6 +109,7 @@ class DQN:
                     [prev-state, action, sumed rewards, next-state, done]
                 - you can provide a custom way of making transitions in **make_transitions**
                   argument explained later.
+                - NOTE: Use skipSteps only when all action have the same temporal resolution.
 
         12. optimize_every_kth_action: int (default 1)
                 - the online model is update after every kth new action. 
@@ -205,8 +206,6 @@ class DQN:
                 parameters and learning rate.
             - assumes the keys as ['state', 'action', 'reward', 'nextState', 'done'] 
                 in the sample dict from replayBuffer.
-            - The make_state function gets an input of a list of observations and 
-                infos corresponding to the skipped and the current states.
             - The model and replay buffer are not updated within the skipSteps steps.
 
         ## other comments: \n
