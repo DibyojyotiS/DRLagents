@@ -26,8 +26,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     """
 
     def __init__(self, bufferSize:int, alpha:float, beta=0.2, beta_rate=0.0001, 
-                bufferType='replace-min', beta_schedule=None, print_args=False, 
-                nprefetch=0, nthreads=1):
+                alpha_rate=0.0, bufferType='replace-min', beta_schedule=None, 
+                alpha_schedule=None, print_args=False, nprefetch=0, nthreads=1):
         """
         NOTE: the dtype for the buffer is infered from the first sample stored
 
@@ -42,27 +42,38 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
                 towards end of training.
 
         3. beta_rate: float (default 0.0001)
-                - the inverse time-constant for beta increase. 
+                - anneals beta to 1.0
                 - By default the beta is updated as 
                     ''beta_ <- min(1, beta + episode*beta_rate)'' at 
                     every new episode.
-                    
-        4. bufferType: str (default 'replace-min')
+
+        4. alpha_rate: float (default 0.0)
+                - anneals alpha to 0
+                - By default the alpha is updated as 
+                    ''alpha <- min(1, alpha - episode*alpha_rate)'' at 
+                    every new episode.
+
+        5. bufferType: str (default 'replace-min')
                 - either 'circular' or 'replace-min'
                 - circular: buffer as priority sampling in a circular deque (windowed memory)
                 - replace-min: replace the experience with min priority if full.
     
-        5. beta_schedule: function (default None)
+        6. beta_schedule: function (default None)
                 - that takes the episode number and returns the next beta
                 this is called at every time sample is produced. 
                 - Overides beta & beta_rate.
                 - Example for beta_schedule can be found at \\
                     ReplayBuffers.helper_funcs.make_exponential_beta_schedule
 
-        6. nprefetch: int (default 0)
+        7. alpha_schedule: function (default None)
+                - that takes the episode number and returns the next alpha
+                this is called at every time sample is produced. 
+                - Overides alpha & alpha_rate.
+
+        8. nprefetch: int (default 0)
                 - the number of batches to prefetch. 0 means no prefetching
 
-        7. nthreads: int (default 5)
+        9. nthreads: int (default 5)
                 - the number of threads to be used for prefetching
         """
 
@@ -71,7 +82,9 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
         self.bufferSize = bufferSize
         self.beta, self.beta_rate = beta, beta_rate
-        self.alpha, self.beta_schedule = alpha, beta_schedule
+        self.alpha, self.alpha_rate = alpha, alpha_rate
+        self.beta_schedule = beta_schedule
+        self.alpha_schedule = alpha_schedule
         self.replace_min =  bufferType == 'replace-min'
 
         # description of the experience tupple
@@ -89,6 +102,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         # define default beta schedule from beta and beta_rate if schedule not given
         if not beta_schedule:
             self.beta_schedule = self._default_beta_schedule
+        if not alpha_schedule:
+            self.alpha_schedule = self._default_alpha_schedule
 
         # init the beta and episode counter
         self.episode = 0 
@@ -193,6 +208,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     def _default_beta_schedule(self, episode):
         return min(1, self.beta + episode*self.beta_rate)
 
+    def _default_alpha_schedule(self, episode):
+        return max(0, self.alpha - episode*self.alpha_rate)
 
     def store(self, state:Tensor, action:Tensor, 
                 reward:Tensor, nextState:Tensor, done:Tensor):
@@ -265,6 +282,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     def update_params(self):
         self.episode += 1 # increment episode counter
         self.beta = self.beta_schedule(self.episode) # update beta
+        self.alpha = self.alpha_schedule(self.episode)
 
     def load_state_dict(self, state_dict):
         self.__dict__.update(state_dict)
