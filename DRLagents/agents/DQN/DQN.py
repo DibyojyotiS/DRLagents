@@ -7,6 +7,7 @@ from numpy.core.fromnumeric import mean
 import torch
 from torch import nn
 from torch.optim.optimizer import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
 
 from DRLagents.explorationStrategies import Strategy, greedyAction
 from DRLagents.replaybuffers import ReplayBuffer
@@ -44,6 +45,7 @@ class DQN:
                 loss = weighted_MSEloss,
                 polyak_average = False,
                 polyak_tau = 0.1,
+                lr_scheduler:_LRScheduler=None,
 
                 # eval while training
                 evalFreq = None,
@@ -156,6 +158,10 @@ class DQN:
                 - the target model is updated according to tau*online_model + (1-tau)*target_model 
                     in every episode
 
+        19. lr_scheduler: something from optim.lr_scheduler (default None)
+                - must be initiated with the optimizer
+                - will be stepped on after every episode
+
         ### eval while training
 
         19. evalFreq: int (default None)
@@ -230,6 +236,7 @@ class DQN:
         self.update_freq_episode = update_freq
         self.optimize_every_kth_action = optimize_every_kth_action
         self.num_gradient_steps = num_gradient_steps
+        self.lr_scheduler = lr_scheduler
 
         # eval
         self.evalFreq = evalFreq
@@ -361,6 +368,7 @@ class DQN:
             # decay exploration strategy and replay buffer params
             self.trainExplorationStrategy.decay()
             self.replayBuffer.update_params()
+            self.lr_scheduler.step()
 
             # do train-book keeping, print progress-output, eval-output, etc... & save stuff
             self._performTrainBookKeeping(episode, totalReward, steps, 
@@ -658,10 +666,13 @@ class DQN:
                 torch.save(self.optimizer.state_dict(), f'{path}/optimizer_statedict.pt')
                 torch.save(self.trainExplorationStrategy.state_dict(), 
                                         f'{path}/trainExplorationStrategy_statedict.pt')
+                if self.lr_scheduler is not None:
+                    torch.save(self.lr_scheduler.state_dict(), f'{path}/lr_scheduler_statedict.pt')
             print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
 
     def attempt_resume(self, resume_dir:str=None, 
-                        reload_buffer=True, reload_optim=True, reload_tstrat=True):
+                        reload_buffer=True, reload_optim=True, reload_tstrat=True,
+                        reload_lrscheduler=True):
         """ attempt to load the replayBuffer, optimizer, trainExplorationStrategy,
         episode-number, online-model and the target-model to resume the training. 
 
@@ -678,6 +689,10 @@ class DQN:
         4. reload_tstrat: bool
                 - wether to restore the state-dict of the 
                 trainExplorationStrategy passed in init
+        5. reload_lrscheduler: bool
+                - wether to load the state-dict of lr-scheduler
+                - if no lr-scheduler is passed in init then
+                this defaults to false
         """
 
         if not resume_dir: resume_dir = self.log_dir
@@ -709,7 +724,10 @@ class DQN:
         if reload_tstrat:
             self.trainExplorationStrategy.load_state_dict(
                 torch.load(f'{path}/trainExplorationStrategy_statedict.pt'))
-
+        if reload_lrscheduler and self.lr_scheduler is not None:
+            self.lr_scheduler.load_state_dict(
+                 torch.load(f'{path}/lr_scheduler_statedict.pt'))
+        
         # load the models
         with open(f'{resume_dir}/resume/episode.txt') as f: episode = int(f.readline().strip())
         path = f'{resume_dir}/models/episode-{episode}'
