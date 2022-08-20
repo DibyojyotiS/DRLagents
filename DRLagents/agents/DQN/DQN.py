@@ -2,6 +2,7 @@ from copy import deepcopy
 from time import perf_counter
 
 import os
+from typing import Callable
 import gym
 from numpy.core.fromnumeric import mean
 import torch
@@ -49,6 +50,7 @@ class DQN:
 
                 # eval while training
                 evalFreq = None,
+                n_eval = 1,
                 evalExplortionStrategy= greedyAction(),
 
                 # miscellaneous
@@ -91,7 +93,7 @@ class DQN:
                 - the discount factor
                 - used in computing the 1-step TD error
 
-        = update_freq: int (default 1)
+        - update_freq: int (default 1)
                 - if not None, the target model is updated every update_freq-th episode
 
         - MaxTrainEpisodes: int (default 500)
@@ -167,6 +169,9 @@ class DQN:
         - evalFreq: int (default None)
                 - if not None, evaluate the agent at every evalFreq-th episode
 
+        - n_eval: int (default 1)
+                - the number of evaluation episodes at every evalFreq-th episode
+
         - evalExplortionStrategy: Strategy (default greedy-strategy)
                 - strategy to select actions from q-values during evaluation
 
@@ -240,6 +245,7 @@ class DQN:
 
         # eval
         self.evalFreq = evalFreq
+        self.n_eval = n_eval
         self.evalExplortionStrategy = evalExplortionStrategy
         
         # miscellaneous args
@@ -269,35 +275,44 @@ class DQN:
 
 
     def trainAgent(self, num_episodes:int=None, render=False, evalEnv=None,
-                    train_printFn=None, eval_printFn=None):
+                    train_printFn=None, eval_printFn=None,
+                    training_callbacks:'list[Callable]'=[]):
         """
         The main function to train the model. If called more than once, 
         then it continues from the last episode. This functionality is usefull
         when we would like to do evaluation on a different environment.
 
         ### parameters
-        1. num_episodes: int (default None)
+        - num_episodes: int (default None)
                 - the number of episodes to train for. 
                 - If 0 or None, then this trains until 
                     MaxTrainEpisodes (passed in init)
                         
-        2. render: bool (default False)
+        - render: bool (default False)
                 - render the env using env.render() while training
 
-        3. evalEnv: gym.Env (default None)
+        - evalEnv: gym.Env (default None)
                 - a gym.Env instance to evaluate on. 
                 - If None, then the env passed in
                     init is used to perform the evaluation.
 
-        4. train_printFn: function (default None)
+        - train_printFn: function (default None)
                 - user provides this function to print more stuff 
                 - takes no arguments
                 - called every printFreq episode
 
-        5. eval_printFn: function (default None) 
+        - eval_printFn: function (default None) 
                 - user provides this function to print more stuff 
                 - takes no arguments
                 - called every evalFreq episode
+
+        - training_callbacks: list[Callable] (default [])
+                - each element is a callable that accepts a dict as the only argument
+                - the dict will have the following keys and corresponding values: 
+                    - episode: (int) episode-number, 
+                    - totalReward: (float) totalReward, 
+                    - steps: (int) total steps taken including those skipped in frame-skipping, 
+                    - average_loss (float): mean loss accross all the optmizing steps
         
         ### returns
             - train_history: dict[str, dict[str, list]]
@@ -360,6 +375,11 @@ class DQN:
                 average_loss = totalLoss / (k//self.optimize_every_kth_action)
             else: average_loss = self._optimizeModel()
 
+            # compute times for logging
+            current_end_time = perf_counter()
+            wall_time_elasped = current_end_time - train_start_time
+            episode_time_elasped = current_end_time - current_start_time
+
             # update target model
             if self.update_freq_episode and episode % self.update_freq_episode == 0:
                 self.target_model.load_state_dict(self.online_model.state_dict())
@@ -372,16 +392,30 @@ class DQN:
 
             # do train-book keeping, print progress-output, eval-output, etc... & save stuff
             self._performTrainBookKeeping(episode, totalReward, steps, 
-                                average_loss, perf_counter()-train_start_time)
-            self._printTrainProgress(episode, totalReward, steps, current_start_time, 
-                                    train_start_time, train_printFn)
+                                average_loss, wall_time_elasped)
+            self._printTrainProgress(episode, totalReward, steps, episode_time_elasped, 
+                                    wall_time_elasped, train_printFn)
             self._save_checkpoint_and_resumeables(episode)
-            self._printEvalPogress(episode, eval_printFn, evalEnv)
+
+            # perform eval run if configured
+            eval_info = None
+            if self._do_evaluation(episode):
+                eval_info = self.evaluate(self.evalExplortionStrategy, 
+                                EvalEpisodes=self.n_eval, verbose=False, evalEnv=evalEnv)
+                self._performEvalBookKeeping(episode, eval_info)
+                self._printEvalProgress(eval_info, episode, eval_printFn)
+
+            # fire the callbacks
+            callback_param = {"episode":episode, "totalReward":totalReward, 
+                                "steps":steps, "average_loss":average_loss, 
+                                "eval_info":eval_info}
+            for callback in training_callbacks: callback(callback_param)
 
             # early breaking
             if totalReward >= self.breakAtReward:
                 print(f'stopping at episode {episode}')
                 break
+
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - train_start_time,'s')  
         
@@ -393,19 +427,19 @@ class DQN:
         """ Evaluate the model for EvalEpisodes number of episodes.
 
         ### parameters
-        1. evalExplortionStrategy: Strategy (default greedyAction)
+        - evalExplortionStrategy: Strategy (default greedyAction)
                 - the exploration strategy to use for evaluation.
         
-        2. EvalEpisodes: int (default 1)
+        - EvalEpisodes: int (default 1)
                 - the number of times to do evaluation
 
-        3. render: bool (default False)
+        - render: bool (default False)
                 - render using env.render()
         
-        4. verbose: bool (default True) 
+        - verbose: bool (default True) 
                 - print the evaluation result
 
-        5. evalEnv: gym.Env (default None) 
+        - evalEnv: gym.Env (default None) 
                 - the environment to evaluate on - to be used if the intended 
                 env for evaluation is not the training env. If None (default) 
                 then the env passed in the init is used for evaluation.
@@ -602,13 +636,15 @@ class DQN:
         if self.log_dir is not None:
             self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
 
-    def _performEvalBookKeeping(self, episode, reward, steps, wallTime):
-        self.evalBook['episode'].append(episode)
-        self.evalBook['reward'].append(reward)
-        self.evalBook['steps'].append(steps)
-        self.evalBook['wallTime'].append(wallTime)
-        if self.log_dir is not None:
-            self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
+    def _performEvalBookKeeping(self, episode, eval_info):
+        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
+        for reward, steps, wallTime in zip(*data):
+            self.evalBook['episode'].append(episode)
+            self.evalBook['reward'].append(reward)
+            self.evalBook['steps'].append(steps)
+            self.evalBook['wallTime'].append(wallTime)
+            if self.log_dir is not None:
+                self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
 
     def _astensor(self, state, action, reward, nextState, done):
         state = torch.tensor(state, dtype=self.float_dtype, device=self.device, requires_grad=False)
@@ -623,31 +659,36 @@ class DQN:
                 'eval': self.evalBook}
 
     def _printTrainProgress(self, episode, totalReward, steps, 
-            current_start_time, train_start_time, train_printFn):
+            episode_time_taken, walltime_elasped, train_printFn):
         # show progress output
         override = (episode == self.MaxTrainEpisodes-1) # print the last episode always
         if self.printFreq and ((episode % self.printFreq == 0) or override):
-            cur_time = perf_counter()
-            time_taken = (cur_time - current_start_time)/60
-            time_elasped = (perf_counter()-train_start_time)/60
             print(f'episode: {episode}/{self.MaxTrainEpisodes} -> reward: {totalReward},', 
-                    f'steps:{steps}, time-taken: {time_taken:.2f}min,',
-                    f'time-elasped: {time_elasped:.2f}min')
+                    f'steps:{steps}, time-taken: {episode_time_taken:.2f}min,',
+                    f'time-elasped: {walltime_elasped:.2f}min')
             if train_printFn is not None: train_printFn() # call the user-printing function
 
-    def _printEvalPogress(self, episode, eval_printFn, evalEnv):
-        # evaluate the agent and do eval-book keepings
+    def _do_evaluation(self, episode):
         override = (episode == self.MaxTrainEpisodes-1)
-        if self.evalFreq and ((episode % self.evalFreq == 0) or override):
-            eval_info = self.evaluate(self.evalExplortionStrategy, 
-                            EvalEpisodes=1, verbose=False, evalEnv=evalEnv)
+        return self.evalFreq and ((episode % self.evalFreq == 0) or override)
+
+    def _printEvalProgress(self, eval_info, episode, eval_printFn):
+        # evaluate the agent and do eval-book keepings
+        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
+        prefix = ""
+        
+        print('\nEVALUATION ========================================')
+
+        if len(data[0]) > 1:
             evalStats = [mean(eval_info[x]) for x in ['rewards','steps','wallTimes']]
-            self._performEvalBookKeeping(episode, *evalStats)
-            print('\n==================================================')
-            print(f'eval-episode: {episode} -> reward: {evalStats[0]},',
-                f'steps: {evalStats[1]}, wall-time: {evalStats[2]:.2f}s')
-            if eval_printFn is not None: eval_printFn()
-            print('==================================================\n')
+            print('avg-reward: {}, avg-steps: {}, avg-walltime: {:.2f}'.format(*evalStats))
+            prefix = '\t~ '
+
+        for x in zip(*data):
+            print(prefix + "reward: {}, steps: {}, wall-time: {:.2f}s".format(*x))
+
+        if eval_printFn is not None: eval_printFn()
+        print('==================================================\n')
 
     def _save_checkpoint_and_resumeables(self, episode):
         if not self.log_dir: return
