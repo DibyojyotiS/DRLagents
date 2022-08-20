@@ -65,45 +65,45 @@ class DQN:
 
         ### training necessities
         
-        1. trainingEnv: gym.Env
+        - trainingEnv: gym.Env
                 - a gym env used for training on, that behaves similar to standard gym environments. 
 
-        2. model: nn.Module
+        - model: nn.Module
                 - The deep network to be trained. It maps states to the action-values.
 
-        3. trainExplortionStrategy: Strategy
+        - trainExplortionStrategy: Strategy
                 - training strategy similar to the classes defined in explorationStrategies.
                 - see: DRLagents.explorationStrategies
                 - it is possible to sub-class the base class Strategy 
                     and create your custom strategy.
 
-        4. optimizer: torch.optim.Optimizer
+        - optimizer: torch.optim.Optimizer
                 - any optimizer with same behaviour one from torch.optim
 
-        5. replayBuffer: ReplayBuffer
+        - replayBuffer: ReplayBuffer
                 - a instance of the class ReplayBuffer (see DRLagents.replaybuffers)
                   like ExperienceReplayBuffer or PrioritizedReplayBuffer
 
-        6. batchSize: int
+        - batchSize: int
                 - the size of the batch of expericence tuples sampled from the replayBuffer
 
-        7. gamma: float (default 5) 
+        - gamma: float (default 5) 
                 - the discount factor
                 - used in computing the 1-step TD error
 
-        8. update_freq: int (default 1)
+        = update_freq: int (default 1)
                 - if not None, the target model is updated every update_freq-th episode
 
-        9. MaxTrainEpisodes: int (default 500)
+        - MaxTrainEpisodes: int (default 500)
                 - maximum number of episodes to train
 
-        10. MaxStepsPerEpisode: int (default None)
+        - MaxStepsPerEpisode: int (default None)
                 - break the episode if number of steps taken reaches or exceeds MaxStepsPerEpisode.
                 - if None then the episode is continued until trianingEnv.step(...) returns done as True.
 
         ### optional training necessities
 
-        11. skipSteps: int or function (default 0)
+        - skipSteps: int or function (default 0)
                 - can be a function that takes in episode and returns an int
                 - the number of steps to repeate the previous action 
                 - the model not optimized during skipped steps
@@ -113,14 +113,14 @@ class DQN:
                   argument explained later.
                 - NOTE: Use skipSteps only when all action have the same temporal resolution.
 
-        12. optimize_every_kth_action: int (default 1)
+        - optimize_every_kth_action: int (default 1)
                 - the online model is update after every kth new action. 
                 - To train the online model only at the end of an episode set this to -1
 
-        13. num_gradient_steps: int (default 1)
+        - num_gradient_steps: int (default 1)
                 - the number of gradient updates every optimize_kth_step.
         
-        14. make_state: function (default default_make_state)
+        - make_state: function (default default_make_state)
                 - inputs:
                     - trajectory: list of [next-observation, info, reward, done].
                         If skipSteps is 0, then trajectory will be of length 1.
@@ -132,7 +132,7 @@ class DQN:
                 - This is used to draw the first most state.
                 - Should also handle trajectory of variable lengths.
 
-        15. make_transitions: function (default default_make_state)
+        - make_transitions: function (default default_make_state)
                 - inputs: (trajectory, state, action, mextState)
                         - trajectory: which is a list of [next-observation, info, reward, done].
                             If skipSteps is 0, then trajectory will be of length 1.
@@ -142,64 +142,64 @@ class DQN:
                 - Should handle trajectories of variable lengths.
                 - creates a list of state-transitions of the form [state, action, reward, next-state, done]
 
-        16. loss: function (default weighted_MSE)
+        - loss: function (default weighted_MSE)
                 - inputs: (X, target, weights[optional])
                 - if the replayBuffer.sample(...) outputs the sampleWeights 
                   The loss will be called as loss(Qestimate, td_target, weights=sampleWeights) 
                 - otherwise loss will be called as loss(Qestimate, td_target).
                 - For weighted_loss examples look in DRLagents.utils.weightedLosses
 
-        17. polyak_average: bool (default False)
+        - polyak_average: bool (default False)
                 - whether to do the polyak-avaraging of target model as 
                     polyak_tau*online_model + (1-polyak_tau)*target_model
                 - if enabled, polyak-averaging will be done at end of every episode
         
-        18. polyak_tau: float (default 0.1)
+        - polyak_tau: float (default 0.1)
                 - the target model is updated according to tau*online_model + (1-tau)*target_model 
                     in every episode
 
-        19. lr_scheduler: something from optim.lr_scheduler (default None)
+        - lr_scheduler: something from optim.lr_scheduler (default None)
                 - must be initiated with the optimizer
                 - will be stepped on after every episode
 
         ### eval while training
 
-        19. evalFreq: int (default None)
+        - evalFreq: int (default None)
                 - if not None, evaluate the agent at every evalFreq-th episode
 
-        20. evalExplortionStrategy: Strategy (default greedy-strategy)
+        - evalExplortionStrategy: Strategy (default greedy-strategy)
                 - strategy to select actions from q-values during evaluation
 
         ## miscellaneous 
 
-        21. printFreq: int (default 1) 
+        - printFreq: int (default 1) 
                 - print training progress every printFreq episode
         
-        22. log_dir: str (default None)
+        - log_dir: str (default None)
                 - path to the directory to save logs and models 
                 - set log_dir to None to save nothing
 
-        23. snapshot_episode: int (default 1) 
+        - snapshot_episode: int (default 1) 
                 - save intermidiate models in the log_dir every snapshot_episode-th episode. 
                 - Set this to 0 or None to not snapshot. 
                 - Or set to 1 (default) to snapshot every episode. 
 
-        24. resumeable_snapshot: int (default None)
+        - resumeable_snapshot: int (default None)
                 - saves the (or overwrites the saved) replay-buffer, trainExporationStrategy, 
                     optimizer-state, for every resumeable_snapshot-th snapshot. 
                 - set this to 0 or None to not save resumables
                 - set to 1 to save resumables at every snapshot
 
-        25. breakAtReward: float (default inf) 
+        - breakAtReward: float (default inf) 
                 - break training when the reward reaches/crosses breakAtReward
 
-        26. device: torch.device (default torch.device('cpu'))
+        - device: torch.device (default torch.device('cpu'))
                 - the device the model is on
 
-        27. float_dtype: 
+        - float_dtype: 
                 - the torch float dtype to be used
 
-        28. print_args: bool (default False)
+        - print_args: bool (default False)
                 - prints the names and values of the arguments (usefull for logging)
 
         ## Implementation notes:\n
