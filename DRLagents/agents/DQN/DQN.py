@@ -520,7 +520,7 @@ class DQN:
 
         return total_loss/self.num_gradient_steps
 
-    def _split_sample(self, sample):
+    def _split_replay_buffer_sample(self, sample):
         """ splits the given sample from replayBuffer.sample() into 
             states, actions, rewards, nextStates, dones, indices, sampleWeights """
         # handling for uniform and prioritized buffers
