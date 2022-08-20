@@ -506,7 +506,7 @@ class DQN:
         for ith_gradient_update in range(self.num_gradient_steps):
             # sample a batch from ReplayBuffer
             sample = self.replayBuffer.sample(self.batchSize)
-            states, actions, rewards, nextStates, dones, indices, sampleWeights = self._split_sample(sample)
+            states, actions, rewards, nextStates, dones, indices, sampleWeights = self._split_replay_buffer_sample(sample)
             # compute the loss
             loss = self._compute_loss_n_updateBuffer(states, actions, rewards, nextStates, dones, indices, sampleWeights)
             # minimize loss
