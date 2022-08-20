@@ -126,5 +126,5 @@ dmypy.jsons
 
 # my temporary folder
 .temp_stuffs
-.temp
+.temp*
 .logs
