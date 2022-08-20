@@ -388,7 +388,7 @@ class DQN:
             # decay exploration strategy and replay buffer params
             self.trainExplorationStrategy.decay()
             self.replayBuffer.update_params()
-            self.lr_scheduler.step()
+            if self.lr_scheduler is not None: self.lr_scheduler.step()
 
             # do train-book keeping, print progress-output, eval-output, etc... & save stuff
             self._performTrainBookKeeping(episode, totalReward, steps, 
