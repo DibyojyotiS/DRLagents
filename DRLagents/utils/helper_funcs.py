@@ -4,6 +4,8 @@ import random
 
 
 def set_seed(seed):
+    """ sets the given seed for
+    random, np.random, torch """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
