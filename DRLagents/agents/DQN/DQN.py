@@ -309,11 +309,20 @@ class DQN:
         - training_callbacks: list[Callable] (default [])
                 - each element is a callable that accepts a dict as the only argument
                 - the dict will have the following keys and corresponding values: 
-                    - episode: (int) episode-number, 
-                    - totalReward: (float) totalReward, 
-                    - steps: (int) total steps taken including those skipped in frame-skipping, 
-                    - average_loss (float): mean loss accross all the optmizing steps
-        
+                    - train
+                        - trainEpisode (int): episode-number, 
+                        - reward (float): totalReward, 
+                        - steps (int): total steps taken including those skipped in frame-skipping, 
+                        - loss (float): mean loss accross all the optmizing steps
+                        - episodeTime (float): time to complete episode in seconds
+                        - wallTime (float): time till now in seconds
+                    - eval (present only on evaluation runs)
+                        - <run-index> (int)
+                            - trainEpisode: (int) episode-number of the last training episode,
+                            - reward: (float) totalReward, 
+                            - steps: (int) total steps taken including those skipped in frame-skipping, 
+                            - wallTime (float): time spent in evaluation till now in seconds
+            
         ### returns
             - train_history: dict[str, dict[str, list]]
                     - keys are 'train' and 'eval'
@@ -457,10 +466,10 @@ class DQN:
         wallTimes = []
 
         # run evals
+        timeStart = perf_counter()
         if not evalEnv: evalEnv = self.trainingEnv
         for evalEpisode in range(EvalEpisodes):
             done = False
-            timeStart = perf_counter()
             # counters
             steps = 0
             totalReward = 0
@@ -640,7 +649,7 @@ class DQN:
             self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
 
     def _performEvalBookKeeping(self, episode, eval_info):
-        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
+        data = [eval_info[x] for x in ['rewards', 'steps', 'episodeTimes']]
         for reward, steps, wallTime in zip(*data):
             self.evalBook['episode'].append(episode)
             self.evalBook['reward'].append(reward)
