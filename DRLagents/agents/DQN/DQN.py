@@ -406,9 +406,16 @@ class DQN:
                 self._printEvalProgress(eval_info, episode, eval_printFn)
 
             # fire the callbacks
-            callback_param = {"episode":episode, "totalReward":totalReward, 
-                                "steps":steps, "average_loss":average_loss, 
-                                "eval_info":eval_info}
+            callback_param = {
+                "train":{
+                    "trainEpisode":episode, "totalReward":totalReward, 
+                    "steps":steps, "average_loss":average_loss             
+                },
+                "eval":{
+                    "trainEpisode": episode,
+                    "eval_info": eval_info
+                }
+            }
             for callback in training_callbacks: callback(callback_param)
 
             # early breaking
