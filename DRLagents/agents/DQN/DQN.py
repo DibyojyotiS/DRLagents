@@ -649,7 +649,7 @@ class DQN:
             self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
 
     def _performEvalBookKeeping(self, episode, eval_info):
-        data = [eval_info[x] for x in ['rewards', 'steps', 'episodeTimes']]
+        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTime']]
         for reward, steps, wallTime in zip(*data):
             self.evalBook['episode'].append(episode)
             self.evalBook['reward'].append(reward)
