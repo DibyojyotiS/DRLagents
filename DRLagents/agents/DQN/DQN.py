@@ -667,8 +667,8 @@ class DQN:
         override = (episode == self.MaxTrainEpisodes-1) # print the last episode always
         if self.printFreq and ((episode % self.printFreq == 0) or override):
             print(f'episode: {episode}/{self.MaxTrainEpisodes} -> reward: {totalReward},', 
-                    f'steps:{steps}, time-taken: {episode_time_taken:.2f}min,',
-                    f'time-elasped: {walltime_elasped:.2f}min')
+                    f'steps:{steps}, time-taken: {episode_time_taken/60:.2f}min,',
+                    f'time-elasped: {walltime_elasped/60:.2f}min')
             if train_printFn is not None: train_printFn() # call the user-printing function
 
     def _do_evaluation(self, episode):
@@ -684,11 +684,12 @@ class DQN:
 
         if len(data[0]) > 1:
             evalStats = [mean(eval_info[x]) for x in ['rewards','steps','wallTimes']]
-            print('avg-reward: {}, avg-steps: {}, avg-walltime: {:.2f}'.format(*evalStats))
+            avg_reward, avg_steps, avg_wallTime = evalStats
+            print(f'avg-reward: {avg_reward}, avg-steps: {avg_steps}, avg-walltime: {avg_wallTime/60:.2f}')
             prefix = '\t~ '
 
-        for x in zip(*data):
-            print(prefix + "reward: {}, steps: {}, wall-time: {:.2f}s".format(*x))
+        for reward, steps, wallTime in zip(*data):
+            print(prefix + f"reward: {reward}, steps: {steps}, wall-time: {wallTime/60:.2f}s")
 
         if eval_printFn is not None: eval_printFn()
         print('==================================================\n')
