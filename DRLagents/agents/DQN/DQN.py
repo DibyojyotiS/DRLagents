@@ -406,17 +406,13 @@ class DQN:
                 self._printEvalProgress(eval_info, episode, eval_printFn)
 
             # fire the callbacks
-            callback_param = {
-                "train":{
-                    "trainEpisode":episode, "totalReward":totalReward, 
-                    "steps":steps, "average_loss":average_loss             
-                },
-                "eval":{
-                    "trainEpisode": episode,
-                    "eval_info": eval_info
-                }
-            }
-            for callback in training_callbacks: callback(callback_param)
+            self._call_callbacks(
+                train_episode= episode, train_reward= totalReward, 
+                train_steps= steps, average_loss= average_loss,
+                train_wall_time_elasped = wall_time_elasped,
+                train_episode_time_elasped = episode_time_elasped,
+                eval_info= eval_info, training_callbacks= training_callbacks
+            )
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -717,6 +713,36 @@ class DQN:
                 if self.lr_scheduler is not None:
                     torch.save(self.lr_scheduler.state_dict(), f'{path}/lr_scheduler_statedict.pt')
             print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
+
+    def _call_callbacks(self, train_episode, train_reward, train_steps, 
+                        average_loss, train_wall_time_elasped, 
+                        train_episode_time_elasped,
+                        eval_info=None, training_callbacks=[]):
+        """ simply builds a dict and fires the callbacks with this dict """
+        if len(training_callbacks) == 0: return
+
+        callback_param = {
+            "train":{
+                "trainEpisode":train_episode, "reward":train_reward, 
+                "steps":train_steps, "loss":average_loss,
+                "wallTime": train_wall_time_elasped,
+                "episodeTime": train_episode_time_elasped           
+            },
+        }
+        if eval_info is not None:
+            data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
+            callback_param["eval"] = {
+                i:{
+                    "trainEpisode": train_episode, 
+                    "reward":eval_reward, 
+                    "steps": eval_steps, 
+                    "wallTime":eval_walltime
+                }
+                for i, (eval_reward,eval_steps,eval_walltime) \
+                    in enumerate(zip(*data))
+            }
+
+        for callback in training_callbacks: callback(callback_param)
 
     def attempt_resume(self, resume_dir:str=None, 
                         reload_buffer=True, reload_optim=True, reload_tstrat=True,
