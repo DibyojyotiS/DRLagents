@@ -118,6 +118,8 @@ class DQN:
         - optimize_every_kth_action: int (default 1)
                 - the online model is update after every kth new action. 
                 - To train the online model only at the end of an episode set this to -1
+                - if the number of actions in an episode is < optimize_every_kth_action
+                then the model is updated at the end of the episode.
 
         - num_gradient_steps: int (default 1)
                 - the number of gradient updates every optimize_kth_step.
@@ -379,10 +381,15 @@ class DQN:
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
 
             # if required optimize at the episode end and compute average loss
-            if not self.optimize_at_end:
-                assert self.optimize_every_kth_action < k, 'REDUCE optimize_every_kth_action!!!'
+            if not self.optimize_at_end and self.optimize_every_kth_action >= k:
                 average_loss = totalLoss / (k//self.optimize_every_kth_action)
-            else: average_loss = self._optimizeModel()
+            else: 
+                average_loss = self._optimizeModel()
+                if not self.optimize_at_end:
+                    print(
+                        "WARNING optimize_every_kth_action > actions taken !"
+                        + "\nOptimized the model now (at the end of episode)."
+                    )
 
             # compute times for logging
             current_end_time = perf_counter()
