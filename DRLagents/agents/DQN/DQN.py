@@ -41,6 +41,7 @@ class DQN:
                 skipSteps = 0,
                 optimize_every_kth_action = 1,
                 num_gradient_steps = 1,
+                gradient_clips = (-1,1),
                 make_state = default_make_state,
                 make_transitions = default_make_transitions,
                 loss = weighted_MSEloss,
@@ -123,6 +124,9 @@ class DQN:
 
         - num_gradient_steps: int (default 1)
                 - the number of gradient updates every optimize_kth_step.
+
+        - gradient_clips: Tuple[int, int] (default = (-1, 1))
+                - the lower and higher clips for gradient clipping
         
         - make_state: function (default default_make_state)
                 - inputs:
@@ -243,6 +247,8 @@ class DQN:
         self.update_freq_episode = update_freq
         self.optimize_every_kth_action = optimize_every_kth_action
         self.num_gradient_steps = num_gradient_steps
+        self.grad_clip_min = gradient_clips[0]
+        self.grad_clip_max = gradient_clips[-1]
         self.lr_scheduler = lr_scheduler
 
         # eval
@@ -565,7 +571,7 @@ class DQN:
             # minimize loss
             self.optimizer.zero_grad()
             loss.backward()
-            clip_grads(self.online_model)
+            clip_grads(self.online_model, _min=self.grad_clip_min, _max=self.grad_clip_max)
             self.optimizer.step()
             total_loss += loss.item()
             # uncomment to get an idea of the speed
