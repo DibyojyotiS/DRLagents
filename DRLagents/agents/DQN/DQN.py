@@ -387,7 +387,7 @@ class DQN:
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
 
             # if required optimize at the episode end and compute average loss
-            if not self.optimize_at_end and self.optimize_every_kth_action >= k:
+            if not self.optimize_at_end and self.optimize_every_kth_action <= k:
                 average_loss = totalLoss / (k//self.optimize_every_kth_action)
             else: 
                 average_loss = self._optimizeModel()
