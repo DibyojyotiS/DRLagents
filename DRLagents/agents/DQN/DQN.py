@@ -559,7 +559,7 @@ class DQN:
         returns the average-loss (as a float type - used only for plotting purposes)
         """
 
-        if len(self.replayBuffer) < self.batchSize: return 0
+        if len(self.replayBuffer) < self.batchSize: return None
         total_loss = 0
         # do self.num_gradient_steps gradient updates
         for ith_gradient_update in range(self.num_gradient_steps):
