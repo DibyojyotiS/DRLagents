@@ -382,7 +382,9 @@ class DQN:
                 # update state, counters and optimize model
                 state = nextState
                 steps += stepsTaken; totalReward += sumReward; k += 1
-                if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: totalLoss += self._optimizeModel()
+                if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: 
+                    loss = self._optimizeModel()
+                    totalLoss += loss if loss is not None else 0
                 if render: self.trainingEnv.render() # render
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
 
