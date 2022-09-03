@@ -713,7 +713,7 @@ class DQN:
             prefix = '\t~ '
 
         for reward, steps, wallTime in zip(*data):
-            print(prefix + f"reward: {reward}, steps: {steps}, wall-time: {wallTime/60:.2f}s")
+            print(prefix + f"reward: {reward}, steps: {steps}, wall-time: {wallTime/60:.2f}min")
 
         if eval_printFn is not None: eval_printFn()
         print('==================================================\n')
