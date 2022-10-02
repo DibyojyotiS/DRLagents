@@ -416,8 +416,7 @@ class DQN:
         state = self.make_state([[observation,info,None,done]], None)
         while not done:
             # take action
-            state = torch.tensor([state], dtype=self.float_dtype, device=self.device)
-            qvalues = self.online_model(state)
+            qvalues = self.online_model(torch.tensor([state], dtype=self.float_dtype, device=self.device))
             action = self.trainExplorationStrategy.select_action(qvalues)
 
             # select action and repeat the action skipStep number of times
@@ -498,8 +497,7 @@ class DQN:
             if render: evalEnv.render()
             while not done:
                 # take action
-                state = torch.tensor([state], dtype=self.float_dtype, device=self.device)
-                qvalues = self.online_model(state)
+                qvalues = self.online_model(torch.tensor([state], dtype=self.float_dtype, device=self.device))
                 action = self.evalExplortionStrategy.select_action(qvalues)
                 # take action and repeat the action skipStep number of times
                 nextState, _, sumReward, done, stepsTaken = self._take_steps(evalEnv, action)
@@ -610,7 +608,6 @@ class DQN:
 
         # compute td-error
         max_a_Q = self.target_model(nextStates).detach().max(-1, keepdims=True)[0] # max estimated-Q values from target net
-        print(states.shape, self.online_model(states).shape)
         current_Q = self.online_model(states).gather(-1, actions)
         td_target = rewards + self.gamma * max_a_Q*(1-dones)
         # scale the error by sampleWeights
