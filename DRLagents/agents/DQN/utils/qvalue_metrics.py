@@ -13,4 +13,4 @@ class MaxQvalue:
             self.max_qvals = self.max_qvals.max(qvalue.detach())
 
     def get_max_qvalues(self):
-        return self.max_qvals
+        return self.max_qvals.flatten().tolist()
