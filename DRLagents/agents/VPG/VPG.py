@@ -11,11 +11,11 @@ from numpy.core.fromnumeric import mean
 import torch
 import torch.nn.functional as F
 from DRLagents.agents.common_helper_funcs.helper_funcs import clip_grads, compute_GAE
-from DRLagents.explorationStrategies import Strategy
+from .explorationStrategies import Strategy
 from torch import Tensor, nn
 from torch.optim.optimizer import Optimizer
 
-from DRLagents.explorationStrategies.greedyStrategy import greedyAction
+from .explorationStrategies.greedyStrategy import greedyAction
 from DRLagents.utils.helper_funcs import printDict
 
 class VPG:

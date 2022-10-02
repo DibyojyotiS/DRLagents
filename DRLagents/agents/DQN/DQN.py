@@ -10,7 +10,10 @@ from torch import nn
 from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
-from DRLagents.explorationStrategies import Strategy, greedyAction
+from DRLagents.agents.DQN.utils.helper_functions import split_replay_buffer_sample
+from DRLagents.agents.DQN.utils.qvalue_metrics import MaxQvalue
+
+from .explorationStrategies import Strategy, greedyAction
 from DRLagents.replaybuffers import ReplayBuffer
 from DRLagents.utils.weightedLosses import weighted_MSEloss
 from DRLagents.utils.helper_funcs import printDict
@@ -75,8 +78,7 @@ class DQN:
                 - The deep network to be trained. It maps states to the action-values.
 
         - trainExplortionStrategy: Strategy
-                - training strategy similar to the classes defined in explorationStrategies.
-                - see: DRLagents.explorationStrategies
+                - training strategy similar to the classes defined in DQN.explorationStrategies.
                 - it is possible to sub-class the base class Strategy 
                     and create your custom strategy.
 
@@ -265,22 +267,16 @@ class DQN:
         self.snapshot_episode = snapshot_episode
         self.float_dtype = float_dtype
         self.resumeable_snapshot = resumeable_snapshot
-        self.skipSteps = skipSteps if type(skipSteps) is not int \
-                        else lambda episode: skipSteps
+        self.skipSteps = self._make_skipSteps_fn(skipSteps)
 
         self.log_dir = log_dir
-        if log_dir is not None:
-            self.log_dir = os.path.join(self.log_dir, 'trainLogs')
-            if not os.path.exists(self.log_dir): os.makedirs(f'{self.log_dir}/models')
-            if resumeable_snapshot and not os.path.exists(f'{self.log_dir}/resume'): 
-                os.makedirs(f'{self.log_dir}/resume')
+        self._init_log_dir(log_dir, resumeable_snapshot)
 
         # required inits
         self.target_model.eval()
         self._initBookKeeping()
         self.optimize_at_end = optimize_every_kth_action==-1
-        self.current_episode = 0 # required if resuming the training
-
+        self.current_episode = 0 
 
     def trainAgent(self, num_episodes:int=None, render=False, evalEnv=None,
                     train_printFn=None, eval_printFn=None,
@@ -347,62 +343,43 @@ class DQN:
 
         for episode in range(self.current_episode, stop_episode):
             
-            done = False
-            observation = self.trainingEnv.reset()
-            info = None # no initial info from gym.Env.reset
             current_start_time = perf_counter()
-            self.current_episode = episode
-    
-            # render
-            if render: self.trainingEnv.render()
 
-            # counters
-            k = 0 # count the number of calls to select-action
-            steps = 0
-            totalReward = 0
-            totalLoss = 0
-
-            state = self.make_state([[observation,info,None,done]], None)
-
-            while not done:
-                # take action
-                action = self.trainExplorationStrategy.select_action(self.online_model, 
-                            torch.tensor([state], dtype=self.float_dtype, device=self.device))
-
-                # select action and repeat the action skipStep number of times
-                nextState, skip_trajectory, sumReward, done, stepsTaken = self._take_steps(self.trainingEnv,action)
-
-                # make transitions and push observation in replay buffer
-                transitions = self.make_transitions(skip_trajectory, state, action, nextState)
-                for _state, _action, _reward, _nextState, _done in transitions:
-                    _state, _action, _reward, _nextState, _done = \
-                            self._astensor(_state, _action, _reward, _nextState, _done)
-                    self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
-
-                # update state, counters and optimize model
-                state = nextState
-                steps += stepsTaken; totalReward += sumReward; k += 1
-                if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: 
-                    loss = self._optimizeModel()
-                    totalLoss += loss if loss is not None else 0
-                if render: self.trainingEnv.render() # render
-                if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
-
-            # if required optimize at the episode end and compute average loss
-            if not self.optimize_at_end and self.optimize_every_kth_action <= k:
-                average_loss = totalLoss / (k//self.optimize_every_kth_action)
-            else: 
-                average_loss = self._optimizeModel()
-                if not self.optimize_at_end:
-                    print(
-                        "WARNING optimize_every_kth_action > actions taken !"
-                        + "\nOptimized the model now (at the end of episode)."
-                    )
+            # train model on this episode
+            (steps, totalReward, 
+            max_qval_stats, average_loss) = self._training_episode(render, episode)
 
             # compute times for logging
             current_end_time = perf_counter()
             wall_time_elasped = current_end_time - train_start_time
             episode_time_elasped = current_end_time - current_start_time
+
+            # do train-book keeping, print progress-output, eval-output, etc... & save stuff
+            self._performTrainBookKeeping(episode, totalReward, steps, average_loss, wall_time_elasped)
+            self._printTrainProgress(episode, totalReward, steps, episode_time_elasped, wall_time_elasped, train_printFn)
+            self._save_checkpoint_and_resumeables(episode)
+
+            # perform eval run if configured
+            eval_info = None
+            if self._is_evaluation_episode(episode):
+                eval_info = self.evaluate(self.evalExplortionStrategy, EvalEpisodes=self.n_eval, verbose=False, evalEnv=evalEnv)
+                self._performEvalBookKeeping(episode, eval_info)
+                self._printEvalProgress(eval_info, episode, eval_printFn)
+
+            # fire the callbacks
+            self._call_callbacks(
+                train_episode= episode, train_reward= totalReward, 
+                train_steps= steps, average_loss= average_loss,
+                train_wall_time_elasped = wall_time_elasped,
+                train_episode_time_elasped = episode_time_elasped,
+                eval_info= eval_info, training_callbacks= training_callbacks,
+                qvalue_stats = max_qval_stats.get_max_qvalues()
+            )
+
+            # early breaking
+            if totalReward >= self.breakAtReward:
+                print(f'stopping at episode {episode}')
+                break
 
             # update target model
             if self.update_freq_episode and episode % self.update_freq_episode == 0:
@@ -414,40 +391,66 @@ class DQN:
             self.replayBuffer.update_params()
             if self.lr_scheduler is not None: self.lr_scheduler.step()
 
-            # do train-book keeping, print progress-output, eval-output, etc... & save stuff
-            self._performTrainBookKeeping(episode, totalReward, steps, 
-                                average_loss, wall_time_elasped)
-            self._printTrainProgress(episode, totalReward, steps, episode_time_elasped, 
-                                    wall_time_elasped, train_printFn)
-            self._save_checkpoint_and_resumeables(episode)
-
-            # perform eval run if configured
-            eval_info = None
-            if self._do_evaluation(episode):
-                eval_info = self.evaluate(self.evalExplortionStrategy, 
-                                EvalEpisodes=self.n_eval, verbose=False, evalEnv=evalEnv)
-                self._performEvalBookKeeping(episode, eval_info)
-                self._printEvalProgress(eval_info, episode, eval_printFn)
-
-            # fire the callbacks
-            self._call_callbacks(
-                train_episode= episode, train_reward= totalReward, 
-                train_steps= steps, average_loss= average_loss,
-                train_wall_time_elasped = wall_time_elasped,
-                train_episode_time_elasped = episode_time_elasped,
-                eval_info= eval_info, training_callbacks= training_callbacks
-            )
-
-            # early breaking
-            if totalReward >= self.breakAtReward:
-                print(f'stopping at episode {episode}')
-                break
-
         # just cuirious to know the total time spent...
         print("total time elasped:", perf_counter() - train_start_time,'s')  
         
         return self._returnBook()
 
+    def _training_episode(self, render, episode):
+        done = False
+        observation = self.trainingEnv.reset()
+        info = None # no initial info from gym.Env.reset
+        self.current_episode = episode
+    
+        # render
+        if render: self.trainingEnv.render()
+
+        # counters
+        k = 0 # count the number of calls to select-action
+        steps = 0
+        totalReward = 0
+        totalLoss = 0
+
+        # some q-value stats
+        max_qval_stats = MaxQvalue()
+        state = self.make_state([[observation,info,None,done]], None)
+        while not done:
+            # take action
+            state = torch.tensor([state], dtype=self.float_dtype, device=self.device)
+            qvalues = self.online_model(state)
+            action = self.trainExplorationStrategy.select_action(qvalues)
+
+            # select action and repeat the action skipStep number of times
+            nextState, skip_trajectory, sumReward, done, stepsTaken = self._take_steps(self.trainingEnv,action)
+
+            # make transitions and push observation in replay buffer
+            transitions = self.make_transitions(skip_trajectory, state, action, nextState)
+            for _state, _action, _reward, _nextState, _done in transitions:
+                _state, _action, _reward, _nextState, _done = \
+                            self._astensor(_state, _action, _reward, _nextState, _done)
+                self.replayBuffer.store(_state, _action, _reward, _nextState, _done)
+
+            # update state, counters and q-value stats
+            state = nextState
+            steps += stepsTaken; totalReward += sumReward; k += 1
+            max_qval_stats(qvalues)
+
+            # optimize model
+            if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: 
+                loss = self._optimizeModel()
+                totalLoss += loss if loss is not None else 0
+            if render: self.trainingEnv.render() # render
+            if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
+
+        # if required optimize at the episode end and compute average loss
+        if not self.optimize_at_end and self.optimize_every_kth_action <= k:
+            average_loss = totalLoss / (k//self.optimize_every_kth_action)
+        else: 
+            average_loss = self._optimizeModel()
+            if not self.optimize_at_end:
+                print("\nWARNING optimize_every_kth_action > actions taken !")
+                print("\tOptimized the model now (at the end of episode).\n")
+        return steps, totalReward, max_qval_stats, average_loss
 
     def evaluate(self, evalExplortionStrategy:Strategy=greedyAction(), 
                 EvalEpisodes=1, render=False, verbose=True, evalEnv:gym.Env=None):
@@ -495,8 +498,9 @@ class DQN:
             if render: evalEnv.render()
             while not done:
                 # take action
-                action = self.evalExplortionStrategy.select_action(self.online_model, torch.tensor([state], 
-                                                                dtype=self.float_dtype, device=self.device))
+                state = torch.tensor([state], dtype=self.float_dtype, device=self.device)
+                qvalues = self.online_model(state)
+                action = self.evalExplortionStrategy.select_action(qvalues)
                 # take action and repeat the action skipStep number of times
                 nextState, _, sumReward, done, stepsTaken = self._take_steps(evalEnv, action)
                 # update state and counters
@@ -519,255 +523,6 @@ class DQN:
         evalinfo = {'rewards': evalRewards, 'steps':evalSteps, 'wallTimes':wallTimes}
 
         return evalinfo
-
-
-    def _compute_loss_n_updateBuffer(self, states, actions, rewards, nextStates, dones, indices, sampleWeights):
-        """ this is the function used to compute the loss and is called within _optimizeModel. And this function
-        also calls the self.replayBuffer.update(indices, priorities). Priorities can be something like 
-        torch.abs(td_error).detach(). Or any other way you can think of ranking the samples. 
-        
-        Subclassing: Modify this function if only the loss computation has to be changed. 
-
-        NOTE: that the indices, sampleWeights can be None if the replayBuffer doesnot return these.        
-        NOTE: If indices is None then no need to update replayBuffer. Do something like:
-            ...
-            if indices is not None:
-                self.replayBuffer.update(indices, torch.abs(td_error).detach())
-        """
-
-        # compute td-error
-        max_a_Q = self.target_model(nextStates).detach().max(-1, keepdims=True)[0] # max estimated-Q values from target net
-        current_Q = self.online_model(states).gather(-1, actions)
-        td_target = rewards + self.gamma * max_a_Q*(1-dones)
-        # scale the error by sampleWeights
-        if sampleWeights is not None:
-            loss = self.lossfn(current_Q, td_target, weights=sampleWeights)
-        else:
-            loss = self.lossfn(current_Q, td_target)
-        # update replay buffer
-        if indices is not None:
-            td_error = (td_target - current_Q).squeeze()
-            self.replayBuffer.update(indices, torch.abs(td_error).detach())
-
-        return loss
-
-    def _optimizeModel(self):
-        """ 
-        For those deriving something from DQN class: This function only implements the
-        one step backprop, however the loss is computed seperatedly in the _compute_loss function
-        which returns a scalar tensor representing the loss. If only the computation of loss has to 
-        be modified then no need to modify _optimizeModel, modify the _compute_loss function 
-
-        returns the average-loss (as a float type - used only for plotting purposes)
-        """
-
-        if len(self.replayBuffer) < self.batchSize: return None
-        total_loss = 0
-        # do self.num_gradient_steps gradient updates
-        for ith_gradient_update in range(self.num_gradient_steps):
-            # sample a batch from ReplayBuffer
-            sample = self.replayBuffer.sample(self.batchSize)
-            states, actions, rewards, nextStates, dones, indices, sampleWeights = self._split_replay_buffer_sample(sample)
-            # compute the loss
-            loss = self._compute_loss_n_updateBuffer(states, actions, rewards, nextStates, dones, indices, sampleWeights)
-            # minimize loss
-            self.optimizer.zero_grad()
-            loss.backward()
-            clip_grads(self.online_model, _min=self.grad_clip_min, _max=self.grad_clip_max)
-            self.optimizer.step()
-            total_loss += loss.item()
-            # uncomment to get an idea of the speed
-            # print(f'gradient-step {ith_gradient_update}', end='\r')
-
-        return total_loss/self.num_gradient_steps
-
-    def _split_replay_buffer_sample(self, sample):
-        """ splits the given sample from replayBuffer.sample() into 
-            states, actions, rewards, nextStates, dones, indices, sampleWeights """
-        # handling for uniform and prioritized buffers
-        if type(sample) == tuple and len(sample) == 3:
-            ## prioritized experience replay type buffer
-            batch, indices, sampleWeights = sample
-            if type(sampleWeights) == torch.Tensor:
-                sampleWeights = sampleWeights.to(self.device)
-            else:
-                sampleWeights = torch.tensor(sampleWeights, dtype=self.float_dtype, device=self.device)
-        elif type(sample) == dict:
-            ## expericence replay buffer with uniform sampling
-            batch = sample
-            indices = sampleWeights = None
-        else:
-            raise AssertionError('replayBuffer.sample() was expected to \
-                return a tupple of size-3 (batch (dict), indices, sampleWeights) or only the batch.')
-        # splits the values
-        states, actions = batch['state'], batch['action']
-        rewards, nextStates, dones = batch['reward'], batch['nextState'], batch['done']
-        return states, actions, rewards, nextStates, dones, indices, sampleWeights
-
-    def _take_steps(self, env:gym.Env, action:Tensor):
-        """ This selects an action using the strategy and state, and then
-        executes the action, and handels frame skipping.In frame skipping 
-        the same action is repeated and the observations and infos are 
-        stored in a list. The next state (where the agent lands) is computed 
-        using the make_state upon the trajectory which is as described below.
-        
-        env: the env to step through using env.step(action)
-        action: the action to repeate (for skip_steps+1 number of times)
-        ---------------
-        this function returns:
-            nextState: the next state
-            trajectory: a list of [next-observation, info, reward, done]
-            sumReward: the sum of the rewards seen 
-            done:bool, whether the episode has ended 
-            stepsTaken: the number of frames actually skipped - usefull when
-                        the episode ends during a frame-skip """
-        action_taken = action.item()
-        sumReward = 0 # to keep track of the total reward in the episode
-        stepsTaken = 0 # to keep track of the total steps in the episode
-        skip_trajectory = []
-        for skipped_step in range(self.skipSteps(self.current_episode) + 1):
-            # repeate the action
-            nextObservation, reward, done, info = env.step(action_taken)
-            sumReward += reward
-            stepsTaken += 1
-            skip_trajectory.append([nextObservation, info, reward, done])
-            if done: break
-        # compute the next state 
-        nextState = self.make_state(skip_trajectory, action_taken)
-        return nextState, skip_trajectory, sumReward, done, stepsTaken
-
-    def _initBookKeeping(self):
-        # init the train and eval books
-        self.trainBook = {'episode':[], 'reward': [], 'steps': [],'loss': [], 'wallTime': []}
-        self.evalBook = {'episode':[], 'reward': [], 'steps': [],'wallTime': []}
-        # open the logging csv files
-        if self.log_dir is not None:
-            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'a', 1, encoding='utf-8')
-            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'a', 1, encoding='utf-8')
-            if os.stat(os.path.join(self.log_dir, 'trainBook.csv')).st_size == 0:
-                self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
-                self.evalBookCsv.write('episode, reward, steps, wallTime\n')
-
-    def _closeBookKeeping(self):
-        # close the log files
-        if self.log_dir is not None:
-            self.trainBookCsv.close()
-            self.evalBookCsv.close()
-
-    def _performTrainBookKeeping(self, episode, reward, steps, loss, wallTime):
-        self.trainBook['episode'].append(episode)
-        self.trainBook['reward'].append(reward)
-        self.trainBook['steps'].append(steps)
-        self.trainBook['loss'].append(loss)
-        self.trainBook['wallTime'].append(wallTime)
-        if self.log_dir is not None:
-            self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
-
-    def _performEvalBookKeeping(self, episode, eval_info):
-        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
-        for reward, steps, wallTime in zip(*data):
-            self.evalBook['episode'].append(episode)
-            self.evalBook['reward'].append(reward)
-            self.evalBook['steps'].append(steps)
-            self.evalBook['wallTime'].append(wallTime)
-            if self.log_dir is not None:
-                self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
-
-    def _astensor(self, state, action, reward, nextState, done):
-        state = torch.tensor(state, dtype=self.float_dtype, device=self.device, requires_grad=False)
-        nextState = torch.tensor(nextState, dtype=self.float_dtype, device=self.device, requires_grad=False)
-        action = torch.tensor([action], dtype=torch.int64, device=self.device, requires_grad=False) # extra axis for indexing purpose
-        reward = torch.tensor([reward], dtype=self.float_dtype, device=self.device, requires_grad=False)
-        done = torch.tensor([done], dtype=torch.int, device=self.device, requires_grad=False)
-        return state, action, reward, nextState, done
-
-    def _returnBook(self):
-        return {'train': self.trainBook,
-                'eval': self.evalBook}
-
-    def _printTrainProgress(self, episode, totalReward, steps, 
-            episode_time_taken, walltime_elasped, train_printFn):
-        # show progress output
-        override = (episode == self.MaxTrainEpisodes-1) # print the last episode always
-        if self.printFreq and ((episode % self.printFreq == 0) or override):
-            print(f'episode: {episode}/{self.MaxTrainEpisodes} -> reward: {totalReward},', 
-                    f'steps:{steps}, time-taken: {episode_time_taken/60:.2f}min,',
-                    f'time-elasped: {walltime_elasped/60:.2f}min')
-            if train_printFn is not None: train_printFn() # call the user-printing function
-
-    def _do_evaluation(self, episode):
-        override = (episode == self.MaxTrainEpisodes-1)
-        return self.evalFreq and ((episode % self.evalFreq == 0) or override)
-
-    def _printEvalProgress(self, eval_info, episode, eval_printFn):
-        # evaluate the agent and do eval-book keepings
-        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
-        prefix = ""
-        
-        print('\nEVALUATION ========================================')
-
-        if len(data[0]) > 1:
-            evalStats = [mean(eval_info[x]) for x in ['rewards','steps','wallTimes']]
-            avg_reward, avg_steps, avg_wallTime = evalStats
-            print(f'avg-reward: {avg_reward}, avg-steps: {avg_steps}, avg-walltime: {avg_wallTime/60:.2f}')
-            prefix = '\t~ '
-
-        for reward, steps, wallTime in zip(*data):
-            print(prefix + f"reward: {reward}, steps: {steps}, wall-time: {wallTime/60:.2f}min")
-
-        if eval_printFn is not None: eval_printFn()
-        print('==================================================\n')
-
-    def _save_checkpoint_and_resumeables(self, episode):
-        if not self.log_dir: return
-        if self.snapshot_episode and episode % self.snapshot_episode == 0:
-            timebegin = perf_counter()
-            # save the models
-            path = f'{self.log_dir}/models/episode-{episode}'
-            if not os.path.exists(path): os.makedirs(path)
-            torch.save(self.online_model.state_dict(), f'{path}/onlinemodel_statedict.pt')
-            torch.save(self.target_model.state_dict(), f'{path}/targetmodel_statedict.pt')            
-            # save the optimizer, episode-number and replay-buffer
-            if self.resumeable_snapshot and episode % (self.resumeable_snapshot*self.snapshot_episode) == 0:
-                path = f'{self.log_dir}/resume'
-                with open(f'{path}/episode.txt', 'w') as f: f.write(f'{episode}')
-                torch.save(self.replayBuffer.state_dict(), f'{path}/replayBuffer_statedict.pt')
-                torch.save(self.optimizer.state_dict(), f'{path}/optimizer_statedict.pt')
-                torch.save(self.trainExplorationStrategy.state_dict(), 
-                                        f'{path}/trainExplorationStrategy_statedict.pt')
-                if self.lr_scheduler is not None:
-                    torch.save(self.lr_scheduler.state_dict(), f'{path}/lr_scheduler_statedict.pt')
-            print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
-
-    def _call_callbacks(self, train_episode, train_reward, train_steps, 
-                        average_loss, train_wall_time_elasped, 
-                        train_episode_time_elasped,
-                        eval_info=None, training_callbacks=[]):
-        """ simply builds a dict and fires the callbacks with this dict """
-        if len(training_callbacks) == 0: return
-
-        callback_param = {
-            "train":{
-                "trainEpisode":train_episode, "reward":train_reward, 
-                "steps":train_steps, "loss":average_loss,
-                "wallTime": train_wall_time_elasped,
-                "episodeTime": train_episode_time_elasped           
-            },
-        }
-        if eval_info is not None:
-            data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
-            callback_param["eval"] = {
-                i:{
-                    "trainEpisode": train_episode, 
-                    "reward":eval_reward, 
-                    "steps": eval_steps, 
-                    "wallTime":eval_walltime
-                }
-                for i, (eval_reward,eval_steps,eval_walltime) \
-                    in enumerate(zip(*data))
-            }
-
-        for callback in training_callbacks: callback(callback_param)
 
     def attempt_resume(self, resume_dir:str=None, 
                         reload_buffer=True, reload_optim=True, reload_tstrat=True,
@@ -838,7 +593,227 @@ class DQN:
 
         return print(f'Successfully loaded stuff from {resume_dir}!',
                     '\nReady to resume training.')
+   
+    def _compute_loss_n_updateBuffer(self, states, actions, rewards, nextStates, dones, indices, sampleWeights):
+        """ this is the function used to compute the loss and is called within _optimizeModel. And this function
+        also calls the self.replayBuffer.update(indices, priorities). Priorities can be something like 
+        torch.abs(td_error).detach(). Or any other way you can think of ranking the samples. 
+        
+        Subclassing: Modify this function if only the loss computation has to be changed. 
 
+        NOTE: that the indices, sampleWeights can be None if the replayBuffer doesnot return these.        
+        NOTE: If indices is None then no need to update replayBuffer. Do something like:
+            ...
+            if indices is not None:
+                self.replayBuffer.update(indices, torch.abs(td_error).detach())
+        """
+
+        # compute td-error
+        max_a_Q = self.target_model(nextStates).detach().max(-1, keepdims=True)[0] # max estimated-Q values from target net
+        print(states.shape, self.online_model(states).shape)
+        current_Q = self.online_model(states).gather(-1, actions)
+        td_target = rewards + self.gamma * max_a_Q*(1-dones)
+        # scale the error by sampleWeights
+        if sampleWeights is not None:
+            loss = self.lossfn(current_Q, td_target, weights=sampleWeights)
+        else:
+            loss = self.lossfn(current_Q, td_target)
+        # update replay buffer
+        if indices is not None:
+            td_error = (td_target - current_Q).squeeze()
+            self.replayBuffer.update(indices, torch.abs(td_error).detach())
+
+        return loss
+
+    def _optimizeModel(self):
+        """ 
+        For those deriving something from DQN class: This function only implements the
+        one step backprop, however the loss is computed seperatedly in the _compute_loss function
+        which returns a scalar tensor representing the loss. If only the computation of loss has to 
+        be modified then no need to modify _optimizeModel, modify the _compute_loss function 
+
+        returns the average-loss (as a float type - used only for plotting purposes)
+        """
+
+        if len(self.replayBuffer) < self.batchSize: return None
+        total_loss = 0
+        # do self.num_gradient_steps gradient updates
+        for ith_gradient_update in range(self.num_gradient_steps):
+            # sample a batch from ReplayBuffer
+            sample = self.replayBuffer.sample(self.batchSize)
+            states, actions, rewards, nextStates, dones, indices, sampleWeights = split_replay_buffer_sample(sample, self.float_dtype, self.device)
+            # compute the loss
+            loss = self._compute_loss_n_updateBuffer(states, actions, rewards, nextStates, dones, indices, sampleWeights)
+            # minimize loss
+            self.optimizer.zero_grad()
+            loss.backward()
+            clip_grads(self.online_model, _min=self.grad_clip_min, _max=self.grad_clip_max)
+            self.optimizer.step()
+            total_loss += loss.item()
+            # uncomment to get an idea of the speed
+            # print(f'gradient-step {ith_gradient_update}', end='\r')
+
+        return total_loss/self.num_gradient_steps
+
+    def _take_steps(self, env:gym.Env, action:Tensor):
+        action_taken = action.item()
+        steps_to_skip = self.skipSteps(self.current_episode)
+
+        # frame skipping
+        skip_trajectory, sumReward, done, stepsTaken = frame_skipping(env, action_taken, steps_to_skip)
+
+        # compute the next state 
+        nextState = self.make_state(skip_trajectory, action_taken)
+        return nextState, skip_trajectory, sumReward, done, stepsTaken
+
+    def _initBookKeeping(self):
+        # init the train and eval books
+        self.trainBook = {'episode':[], 'reward': [], 'steps': [],'loss': [], 'wallTime': []}
+        self.evalBook = {'episode':[], 'reward': [], 'steps': [],'wallTime': []}
+        # open the logging csv files
+        if self.log_dir is not None:
+            self.trainBookCsv = open(os.path.join(self.log_dir, 'trainBook.csv'), 'a', 1, encoding='utf-8')
+            self.evalBookCsv = open(os.path.join(self.log_dir, 'evalBook.csv'), 'a', 1, encoding='utf-8')
+            if os.stat(os.path.join(self.log_dir, 'trainBook.csv')).st_size == 0:
+                self.trainBookCsv.write('episode, reward, steps, loss, wallTime\n')
+                self.evalBookCsv.write('episode, reward, steps, wallTime\n')
+
+    def _closeBookKeeping(self):
+        # close the log files
+        if self.log_dir is not None:
+            self.trainBookCsv.close()
+            self.evalBookCsv.close()
+
+    def _performTrainBookKeeping(self, episode, reward, steps, loss, wallTime):
+        self.trainBook['episode'].append(episode)
+        self.trainBook['reward'].append(reward)
+        self.trainBook['steps'].append(steps)
+        self.trainBook['loss'].append(loss)
+        self.trainBook['wallTime'].append(wallTime)
+        if self.log_dir is not None:
+            self.trainBookCsv.write(f'{episode}, {reward}, {steps}, {loss}, {wallTime}\n')
+
+    def _performEvalBookKeeping(self, episode, eval_info):
+        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
+        for reward, steps, wallTime in zip(*data):
+            self.evalBook['episode'].append(episode)
+            self.evalBook['reward'].append(reward)
+            self.evalBook['steps'].append(steps)
+            self.evalBook['wallTime'].append(wallTime)
+            if self.log_dir is not None:
+                self.evalBookCsv.write(f'{episode}, {reward}, {steps}, {wallTime}\n')
+
+    def _astensor(self, state, action, reward, nextState, done):
+        state = torch.tensor(state, dtype=self.float_dtype, device=self.device, requires_grad=False)
+        nextState = torch.tensor(nextState, dtype=self.float_dtype, device=self.device, requires_grad=False)
+        action = torch.tensor([action], dtype=torch.int64, device=self.device, requires_grad=False) # extra axis for indexing purpose
+        reward = torch.tensor([reward], dtype=self.float_dtype, device=self.device, requires_grad=False)
+        done = torch.tensor([done], dtype=torch.int, device=self.device, requires_grad=False)
+        return state, action, reward, nextState, done
+
+    def _returnBook(self):
+        return {'train': self.trainBook,
+                'eval': self.evalBook}
+
+    def _printTrainProgress(self, episode, totalReward, steps, 
+            episode_time_taken, walltime_elasped, train_printFn):
+        # show progress output
+        override = (episode == self.MaxTrainEpisodes-1) # print the last episode always
+        if self.printFreq and ((episode % self.printFreq == 0) or override):
+            print(f'episode: {episode}/{self.MaxTrainEpisodes} -> reward: {totalReward},', 
+                    f'steps:{steps}, time-taken: {episode_time_taken/60:.2f}min,',
+                    f'time-elasped: {walltime_elasped/60:.2f}min')
+            if train_printFn is not None: train_printFn() # call the user-printing function
+
+    def _is_evaluation_episode(self, episode):
+        override = (episode == self.MaxTrainEpisodes-1)
+        return self.evalFreq and ((episode % self.evalFreq == 0) or override)
+
+    def _printEvalProgress(self, eval_info, episode, eval_printFn):
+        # evaluate the agent and do eval-book keepings
+        data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
+        prefix = ""
+        
+        print('\nEVALUATION ========================================')
+
+        if len(data[0]) > 1:
+            evalStats = [mean(eval_info[x]) for x in ['rewards','steps','wallTimes']]
+            avg_reward, avg_steps, avg_wallTime = evalStats
+            print(f'avg-reward: {avg_reward}, avg-steps: {avg_steps}, avg-walltime: {avg_wallTime/60:.2f}')
+            prefix = '\t~ '
+
+        for reward, steps, wallTime in zip(*data):
+            print(prefix + f"reward: {reward}, steps: {steps}, wall-time: {wallTime/60:.2f}min")
+
+        if eval_printFn is not None: eval_printFn()
+        print('==================================================\n')
+
+    def _save_checkpoint_and_resumeables(self, episode):
+        if not self.log_dir: return
+        if not self.snapshot_episode: return
+        if episode % self.snapshot_episode == 0:
+            timebegin = perf_counter()
+            # save the models
+            path = f'{self.log_dir}/models/episode-{episode}'
+            if not os.path.exists(path): os.makedirs(path)
+            torch.save(self.online_model.state_dict(), f'{path}/onlinemodel_statedict.pt')
+            torch.save(self.target_model.state_dict(), f'{path}/targetmodel_statedict.pt')            
+            # save the optimizer, episode-number and replay-buffer
+            if self.resumeable_snapshot and episode % (self.resumeable_snapshot*self.snapshot_episode) == 0:
+                path = f'{self.log_dir}/resume'
+                with open(f'{path}/episode.txt', 'w') as f: f.write(f'{episode}')
+                torch.save(self.replayBuffer.state_dict(), f'{path}/replayBuffer_statedict.pt')
+                torch.save(self.optimizer.state_dict(), f'{path}/optimizer_statedict.pt')
+                torch.save(self.trainExplorationStrategy.state_dict(), 
+                                        f'{path}/trainExplorationStrategy_statedict.pt')
+                if self.lr_scheduler is not None:
+                    torch.save(self.lr_scheduler.state_dict(), f'{path}/lr_scheduler_statedict.pt')
+            print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
+
+    def _call_callbacks(self, train_episode, train_reward, train_steps, 
+                        average_loss, train_wall_time_elasped, 
+                        train_episode_time_elasped,
+                        eval_info=None, training_callbacks=[],
+                        qvalue_stats=None):
+        """ simply builds a dict and fires the callbacks with this dict """
+        if len(training_callbacks) == 0: return
+
+        callback_param = {
+            "train":{
+                "trainEpisode":train_episode, "reward":train_reward, 
+                "steps":train_steps, "loss":average_loss,
+                "wallTime": train_wall_time_elasped,
+                "episodeTime": train_episode_time_elasped,
+                "qvalue_stats": qvalue_stats           
+            },
+        }
+        if eval_info is not None:
+            data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
+            callback_param["eval"] = {
+                i:{
+                    "trainEpisode": train_episode, 
+                    "reward":eval_reward, 
+                    "steps": eval_steps, 
+                    "wallTime":eval_walltime
+                }
+                for i, (eval_reward,eval_steps,eval_walltime) \
+                    in enumerate(zip(*data))
+            }
+
+        for callback in training_callbacks: callback(callback_param)
+ 
+    def _make_skipSteps_fn(self, skipSteps):
+        if type(skipSteps) is int:
+            steps_to_take = max(1, skipSteps)
+            return lambda episode: steps_to_take
+        return skipSteps # asuming skipsteps is a callable
+ 
+    def _init_log_dir(self, log_dir, resumeable_snapshot):
+        if log_dir is not None:
+            self.log_dir = os.path.join(self.log_dir, 'trainLogs')
+            if not os.path.exists(self.log_dir): os.makedirs(f'{self.log_dir}/models')
+            if resumeable_snapshot and not os.path.exists(f'{self.log_dir}/resume'): 
+                os.makedirs(f'{self.log_dir}/resume')# required if resuming the training
 
     def __delete__(self):
         # close all IO stuff

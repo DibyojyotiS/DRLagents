@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .Strategy import Strategy
-from ..utils import printDict
+from DRLagents.utils.helper_funcs import printDict
 
 
 # we have the input model here so that the user can have a model of multiple submodels and then use only one submodel in

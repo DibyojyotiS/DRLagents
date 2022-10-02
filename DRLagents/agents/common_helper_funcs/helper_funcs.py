@@ -1,5 +1,7 @@
 import torch
 from torch import Tensor, nn
+from gym import Env
+
 
 def polyak_update(online_model:nn.Module, target_model:nn.Module, tau=0.1):
     """ sets all the parameters of the target_model as 
@@ -86,3 +88,44 @@ def default_make_state(trajectory:list, action_taken):
         - next-state: tensor
     ''' 
     return trajectory[-1][0]
+
+
+def frame_skipping(env:Env, action_taken:int, steps_to_skip):
+    """ This executes the action, and handels frame skipping.
+    In frame skipping the same action is repeated and the observations
+    and infos are are stored in a list. The next state (where the agent 
+    lands) is computed using the make_state upon the list of observations
+    and infos.
+    
+    If the episode terminates within a frame skip then the list is padded 
+    using the last observed observation and info to maintain the same input
+    size. 
+
+    ### parameters
+    1. action_taken: int
+            - action to repeate while frame-skipping
+    2. steps_to_skip: int
+            - the number of frames to skip
+
+    ### returns:
+    1. skip_trajectory: 
+            - the list of skipped (nextObservation, info, reward, done)
+    2. sumReward: float
+            - the sum of the rewards seen 
+    3. done:bool
+            - whether the episode has ended 
+    4. stepsTaken: int
+            - the number of frames actually skipped - usefull when
+                the episode ends during a frame-skip """
+    # assert steps_to_skip >= 1, "should take atleast one step"
+    sumReward = 0 # to keep track of the total reward in the episode
+    stepsTaken = 0 # to keep track of the total steps in the episode
+    skip_trajectory = []
+    for skipped_step in range(steps_to_skip):
+        # repeate the action
+        nextObservation, reward, done, info = env.step(action_taken)
+        sumReward += reward
+        stepsTaken += 1
+        skip_trajectory.append([nextObservation, info, reward, done])
+        if done: break
+    return skip_trajectory, sumReward, done, stepsTaken

@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 from DRLagents import *
-
+from DRLagents.agents.DQN.explorationStrategies import greedyAction, epsilonGreedyAction
 
 # make a gym environment
 env = gym.make('CartPole-v0')
