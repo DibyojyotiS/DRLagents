@@ -51,7 +51,7 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
     evalExplortionStrategy = greedyAction()
 
     # define the training strategy DQN in our example
-    DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, 
+    DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 128, 
                     # optimize_every_kth_action=-1, num_gradient_steps=10,
                     MaxTrainEpisodes=MTE, skipSteps=0, evalFreq=50, device=device)
                     # might want to do MaxTrainEpisodes=250 for prioritized buffer
@@ -69,7 +69,7 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
 
 
 if __name__ == "__main__":
-    trainHistory, _ = run_DQN_on_cartpole_V0(True)
+    trainHistory, _ = run_DQN_on_cartpole_V0(True, "prioritized")
     trainHistory = trainHistory['train']
     # plots the training rewards v/s episodes
     averaged_rewards = movingAverage(trainHistory['reward'])
