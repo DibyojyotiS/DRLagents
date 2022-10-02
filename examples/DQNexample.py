@@ -7,7 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 from DRLagents import *
-
+from DRLagents.agents.DQN.explorationStrategies import greedyAction, epsilonGreedyAction
 
 # make a gym environment
 env = gym.make('CartPole-v0')
@@ -46,12 +46,12 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
 
     # init necessities
     Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
-    optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
+    optimizer = optim.Adam(Qnetwork.parameters(), lr=0.002)
     trainExplortionStrategy = epsilonGreedyAction(0.5, 0.3, MTE)
     evalExplortionStrategy = greedyAction()
 
     # define the training strategy DQN in our example
-    DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64, 
+    DQNagent = DQN(env, Qnetwork, trainExplortionStrategy, optimizer, replayBuffer, 128, 
                     # optimize_every_kth_action=-1, num_gradient_steps=10,
                     MaxTrainEpisodes=MTE, skipSteps=0, evalFreq=50, device=device)
                     # might want to do MaxTrainEpisodes=250 for prioritized buffer
@@ -69,7 +69,7 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
 
 
 if __name__ == "__main__":
-    trainHistory, _ = run_DQN_on_cartpole_V0(True)
+    trainHistory, _ = run_DQN_on_cartpole_V0(True, "prioritized")
     trainHistory = trainHistory['train']
     # plots the training rewards v/s episodes
     averaged_rewards = movingAverage(trainHistory['reward'])
