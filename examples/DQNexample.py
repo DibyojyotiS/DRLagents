@@ -46,7 +46,7 @@ def run_DQN_on_cartpole_V0(evalRender=False, buffertype='uniform'):
 
     # init necessities
     Qnetwork = net(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
-    optimizer = optim.Adam(Qnetwork.parameters(), lr=0.001)
+    optimizer = optim.Adam(Qnetwork.parameters(), lr=0.002)
     trainExplortionStrategy = epsilonGreedyAction(0.5, 0.3, MTE)
     evalExplortionStrategy = greedyAction()
 
