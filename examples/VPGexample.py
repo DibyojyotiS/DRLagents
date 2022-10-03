@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 from DRLagents import *
+from DRLagents.agents.VPG.explorationStrategies import greedyAction, softMaxAction
 
 
 # make a gym environment

@@ -7,6 +7,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 from DRLagents import *
+from DRLagents.agents.DQN.explorationStrategies import greedyAction, epsilonGreedyAction
 
 
 # change buffertype to 'uniform' for Uniform-Sampling-buffer
@@ -40,7 +41,6 @@ def run_D3QN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
     # init necessities
     duellingQnetwork = duellingDNN(inDim=4, outDim=2, hDim=[8,8], activation=F.relu).to(device)
     optimizer = optim.Adam(duellingQnetwork.parameters(), lr=0.001)
-    trainExplortionStrategy = epsilonGreedyAction(0.5, 0.05, 100)
     evalExplortionStrategy = greedyAction()
 
     ## choose a replay buffer or implement your own
@@ -51,7 +51,9 @@ def run_D3QN_on_cartpole_V0(evalRender=False, buffertype='prioritized'):
         MTE=300
         replayBuffer = PrioritizedExperienceRelpayBuffer(bufferSize=10000, 
                             alpha=0.6, beta=0.2, beta_rate=0.004) # prioritized sampling
-        
+    
+    trainExplortionStrategy = epsilonGreedyAction(0.5, 0.1, MTE)
+
     # define the training strategy DQN in our example
     D3QNagent = DDQN(env, duellingQnetwork, trainExplortionStrategy, optimizer, replayBuffer, 64,
                     MaxTrainEpisodes=MTE, skipSteps=1, device=device, polyak_average=True, update_freq=5)
