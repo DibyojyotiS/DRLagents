@@ -78,7 +78,7 @@ class epsilonGreedyAction(Strategy):
     exp_decay_factor = None
     def _exponential_decay(self, episode):
         if self.exp_decay_factor is None:
-            self.exp_decay_factor = (np.math.log(epsilon) - \
+            self.exp_decay_factor = (np.math.log(self.initepsilon) - \
                 np.math.log(self.finalepsilon))/self.decaySteps
         epsilon = self.initepsilon*np.exp(-self.exp_decay_factor*episode)
         return max(epsilon, self.finalepsilon)
