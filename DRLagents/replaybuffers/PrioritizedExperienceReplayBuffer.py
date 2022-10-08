@@ -50,7 +50,7 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         4. alpha_rate: float (default 0.0)
                 - anneals alpha to 0
                 - By default the alpha is updated as 
-                    ''alpha <- min(1, alpha - episode*alpha_rate)'' at 
+                    ''alpha <- max(0, alpha - episode*alpha_rate)'' at 
                     every new episode.
 
         5. bufferType: str (default 'replace-min')
