@@ -84,7 +84,7 @@ def update_priority_trees(
         idx = indices[i]
         priority = priorities[i]
         # assert priority >= 0
-        priority_alpha = priority**alpha + 0.00000001
+        priority_alpha = priority**alpha + 0.000001
         update_priority_sum(priority_sum, idx, priority_alpha)
         update_priority_min(priority_min, idx, priority_alpha)
         max_priority = max(max_priority, priority)
