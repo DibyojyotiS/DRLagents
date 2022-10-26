@@ -265,9 +265,9 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
 
         # compute importance sampling weights - following the paper
         prob_min = self._get_min()/self._get_sum()
-        max_weight = (self.size * prob_min) ** (-self.beta) # for normalization
+        max_weight = (self.size * prob_min + 0.000001) ** (-self.beta) # for normalization
         probs = self._priority_sum[indices + self.bufferSize] / self._get_sum()
-        weights = (probs * self.size) ** (-self.beta)
+        weights = (probs * self.size + 0.000001) ** (-self.beta)
         weights = weights / max_weight # normalized importance sampling weights
 
         # get the experiences
