@@ -79,7 +79,7 @@ def update_priority_trees(
     indices, priorities, priority_sum, priority_min, alpha, 
 ):
     """priorities should be all positive"""
-    max_priority = 1
+    max_priority = 0
     for i in prange(len(indices)):
         idx = indices[i]
         priority = priorities[i]
