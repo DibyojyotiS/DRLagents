@@ -8,10 +8,10 @@ from DRLagents.replaybuffers.helper_funcs.prefetch_utils import threading_prefet
 from DRLagents.utils import printDict
 from DRLagents.replaybuffers import ReplayBuffer
 
-from numba import njit, prange, float64, int64
+from numba import njit, prange
 
 
-@njit(parallel=False)
+@njit(parallel=True)
 def weighted_sampling(priority_sum, batchSize):
     """ weighted sampling according to priorities
     Assumed that priority_sum is 1-indexed. 
@@ -49,29 +49,47 @@ def weighted_sampling(priority_sum, batchSize):
     return indices
 
 
-# @njit()
-# def update_priority_sum(priority_sum, idx, priority_alpha):
-#     bufferSize = len(priority_sum)//2
-#     idx = idx + bufferSize
-#     priority_sum[idx] = priority_alpha
-#     while idx >= 2:
-#         idx//=2
-#         priority_sum[idx] = priority_sum[2*idx] + priority_sum[2*idx+1]
+@njit
+def update_priority_sum(priority_sum, idx, priority_alpha):
+    bufferSize = len(priority_sum)//2
+    idx = idx + bufferSize
+    priority_sum[idx] = priority_alpha
+    while idx >= 2:
+        idx//=2
+        priority_sum[idx] = priority_sum[2*idx] + priority_sum[2*idx+1]
 
 
-# @njit()
-# def update_priority_min(priority_min, idx, priority_alpha):
-#     # one indexed in idx -> the min is stored at self.min_priority[1]
-#     bufferSize = len(priority_min)//2
-#     idx = idx + bufferSize
-#     priority_min[idx][0] = priority_alpha
-#     priority_min[idx][1] = idx - bufferSize
-#     while idx >= 2:
-#         idx//=2
-#         if priority_min[2*idx][0] < priority_min[2*idx+1][0]:
-#             priority_min[idx] = priority_min[2*idx]
-#         else:
-#             priority_min[idx] = priority_min[2*idx+1]
+@njit
+def update_priority_min(priority_min, idx, priority_alpha):
+    # one indexed in idx -> the min is stored at self.min_priority[1]
+    bufferSize = len(priority_min)//2
+    idx = idx + bufferSize
+    priority_min[idx][0] = priority_alpha
+    priority_min[idx][1] = idx - bufferSize
+    while idx >= 2:
+        idx//=2
+        if priority_min[2*idx][0] < priority_min[2*idx+1][0]:
+            priority_min[idx] = priority_min[2*idx]
+        else:
+            priority_min[idx] = priority_min[2*idx+1]
+
+
+@njit(parallel=True)
+def update_priority_trees(
+    indices, priorities, priority_sum, priority_min, alpha, 
+):
+    """priorities should be all positive"""
+    max_priority = 1
+    for i in prange(len(indices)):
+        idx = indices[i]
+        priority = priorities[i]
+        # assert priority >= 0
+        priority_alpha = priority**alpha + 0.00000001
+        update_priority_sum(priority_sum, idx, priority_alpha)
+        update_priority_min(priority_min, idx, priority_alpha)
+        max_priority = max(max_priority, priority)
+    
+    return max_priority
 
 
 class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
@@ -185,26 +203,6 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         if self.replace_min: print('PrioritizedBuffer of type replace-min')
         else: print('PrioritizedBuffer of type circular') 
 
-    def _update_priority_min(self, idx, priority_alpha):
-        # one indexed in idx -> the min is stored at self.min_priority[1]
-        idx = idx + self.bufferSize
-        self._priority_min[idx][0] = priority_alpha
-        self._priority_min[idx][1] = idx - self.bufferSize
-        while idx >= 2:
-            idx//=2
-            if self._priority_min[2*idx][0] < self._priority_min[2*idx+1][0]:
-                self._priority_min[idx] = self._priority_min[2*idx]
-            else:
-                self._priority_min[idx] = self._priority_min[2*idx+1]
-
-    def _update_sum_priority(self, idx, priority_alpha):
-        # one indexed in idx
-        idx = idx + self.bufferSize
-        self._priority_sum[idx] = priority_alpha
-        while idx >= 2:
-            idx//=2
-            self._priority_sum[idx] = self._priority_sum[2*idx] + self._priority_sum[2*idx+1]
-
     def _get_sum(self):
         return self._priority_sum[1]
 
@@ -243,8 +241,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self.size = min(self.bufferSize, self.size+1)
 
         priority_alpha = self.max_priority ** self.alpha
-        self._update_priority_min(idx, priority_alpha)
-        self._update_sum_priority(idx, priority_alpha)
+        update_priority_min(self._priority_min, idx, priority_alpha)
+        update_priority_sum(self._priority_sum, idx, priority_alpha)
 
     def sample(self, batchSize:int):
         """ samples a batchSize number of experiences and returns
@@ -280,12 +278,10 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
     def update(self, indices, priorities:torch.Tensor):
         """priorities should be all positive"""
         priorities = priorities.cpu().numpy()
-        for idx, priority in zip(indices, priorities):
-            assert priority >= 0
-            self.max_priority = max(self.max_priority, priority)
-            priority_alpha = priority**self.alpha + 0.00000001
-            self._update_sum_priority(idx, priority_alpha)
-            self._update_priority_min(idx, priority_alpha)
+        max_priority = update_priority_trees(
+            indices, priorities, self._priority_sum, self._priority_min, self.alpha
+        )
+        self.max_priority = max(self.max_priority, max_priority)
 
     def update_params(self):
         self.episode += 1 # increment episode counter
