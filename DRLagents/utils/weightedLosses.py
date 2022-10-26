@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 def _apply_weights(loss:torch.Tensor, weights:torch.Tensor):
     loss = loss.squeeze() * weights.squeeze()
-    loss = loss.sum()/weights.sum()
+    loss = loss.sum()/(weights.sum() + 1e-6)
     return loss
 
 
