@@ -52,7 +52,7 @@ def weighted_sampling(priority_sum, batchSize):
 @njit
 def update_priority_sum(priority_sum, idx, priority_alpha):
     bufferSize = len(priority_sum)//2
-    idx = idx + bufferSize
+    idx = idx + bufferSize + 1
     priority_sum[idx] = priority_alpha
     while idx >= 2:
         idx//=2
@@ -63,9 +63,9 @@ def update_priority_sum(priority_sum, idx, priority_alpha):
 def update_priority_min(priority_min, idx, priority_alpha):
     # one indexed in idx -> the min is stored at self.min_priority[1]
     bufferSize = len(priority_min)//2
-    idx = idx + bufferSize
+    idx = idx + bufferSize + 1
     priority_min[idx][0] = priority_alpha
-    priority_min[idx][1] = idx - bufferSize
+    priority_min[idx][1] = idx - bufferSize - 1
     while idx >= 2:
         idx//=2
         if priority_min[2*idx][0] < priority_min[2*idx+1][0]:
