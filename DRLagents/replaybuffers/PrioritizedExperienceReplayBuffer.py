@@ -171,8 +171,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         self.buffer = None
 
         # sum trees for efficent queries
-        self._priority_min = np.array([[float('inf'), -1] for _ in range(2*bufferSize+1)]) # val, idx
-        self._priority_sum = np.array([0.0 for _ in range(2*bufferSize+1)])
+        self._priority_min = np.array([[float('inf'), -1] for _ in range(2*bufferSize)]) # val, idx
+        self._priority_sum = np.array([0.0 for _ in range(2*bufferSize)])
 
         self.size = 0
         self.nextidx = 0
