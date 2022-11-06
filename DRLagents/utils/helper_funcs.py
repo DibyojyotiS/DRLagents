@@ -1,11 +1,19 @@
 import numpy as np
 import torch
 import random
+import numba
+
+
+@numba.njit
+def set_numba_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
 
 
 def set_seed(seed):
     """ sets the given seed for
     random, np.random, torch """
+    set_numba_seed(seed)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
