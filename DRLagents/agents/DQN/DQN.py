@@ -11,7 +11,7 @@ from torch.optim.optimizer import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 
 from DRLagents.agents.DQN.utils.helper_functions import split_replay_buffer_sample
-from DRLagents.agents.DQN.utils.qvalue_metrics import MaxQvalue
+from DRLagents.agents.DQN.utils.qvalue_metrics import MaxQvalue, MinQvalue
 
 from .explorationStrategies import Strategy, greedyAction
 from DRLagents.replaybuffers import ReplayBuffer
@@ -347,7 +347,7 @@ class DQN:
 
             # train model on this episode
             (steps, totalReward, 
-            max_qval_stats, average_loss) = self._training_episode(render, episode)
+            qvalue_stats, average_loss) = self._training_episode(render, episode)
 
             # compute times for logging
             current_end_time = perf_counter()
@@ -373,7 +373,7 @@ class DQN:
                 train_wall_time_elasped = wall_time_elasped,
                 train_episode_time_elasped = episode_time_elasped,
                 eval_info= eval_info, training_callbacks= training_callbacks,
-                qvalue_stats = max_qval_stats.get_max_qvalues()
+                qvalue_stats = qvalue_stats
             )
 
             # early breaking
@@ -413,6 +413,8 @@ class DQN:
 
         # some q-value stats
         max_qval_stats = MaxQvalue()
+        min_qval_stats = MinQvalue()
+
         state = self.make_state([[observation,info,None,done]], None)
         while not done:
             # take action
@@ -432,7 +434,8 @@ class DQN:
             # update state, counters and q-value stats
             state = nextState
             steps += stepsTaken; totalReward += sumReward; k += 1
-            max_qval_stats(qvalues)
+            max_qval_stats.update(qvalues)
+            min_qval_stats.update(min_qval_stats)
 
             # optimize model
             if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: 
@@ -449,7 +452,13 @@ class DQN:
             if not self.optimize_at_end:
                 print("\nWARNING optimize_every_kth_action > actions taken !")
                 print("\tOptimized the model now (at the end of episode).\n")
-        return steps, totalReward, max_qval_stats, average_loss
+
+        qval_stats = {
+            "min": min_qval_stats.get_min_qvalues(),
+            "max": max_qval_stats.get_max_qvalues()
+        }
+
+        return steps, totalReward, qval_stats, average_loss
 
     def evaluate(self, evalExplortionStrategy:Strategy=greedyAction(), 
                 EvalEpisodes=1, render=False, verbose=True, evalEnv:gym.Env=None):
