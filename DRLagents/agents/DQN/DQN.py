@@ -435,7 +435,7 @@ class DQN:
             state = nextState
             steps += stepsTaken; totalReward += sumReward; k += 1
             max_qval_stats.update(qvalues)
-            min_qval_stats.update(min_qval_stats)
+            min_qval_stats.update(qvalues)
 
             # optimize model
             if not self.optimize_at_end and k % self.optimize_every_kth_action == 0: 
