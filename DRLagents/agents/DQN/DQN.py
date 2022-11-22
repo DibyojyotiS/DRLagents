@@ -280,7 +280,8 @@ class DQN:
 
     def trainAgent(self, num_episodes:int=None, render=False, evalEnv=None,
                     train_printFn=None, eval_printFn=None,
-                    training_callbacks:'list[Callable]'=[]):
+                    training_callback:Callable=None,
+                    eval_callback:Callable=None):
         """
         The main function to train the model. If called more than once, 
         then it continues from the last episode. This functionality is usefull
@@ -310,22 +311,21 @@ class DQN:
                 - takes no arguments
                 - called every evalFreq episode
 
-        - training_callbacks: list[Callable] (default [])
-                - each element is a callable that accepts a dict as the only argument
+        - training_callback: Callable (default None)
+                - accepts a dict as the only argument
                 - the dict will have the following keys and corresponding values: 
-                    - train
-                        - trainEpisode (int): episode-number, 
-                        - reward (float): totalReward, 
-                        - steps (int): total steps taken including those skipped in frame-skipping, 
-                        - loss (float): mean loss accross all the optmizing steps
-                        - episodeTime (float): time to complete episode in seconds
-                        - wallTime (float): time till now in seconds
-                    - eval (present only on evaluation runs)
-                        - <run-index> (int)
-                            - trainEpisode: (int) episode-number of the last training episode,
-                            - reward: (float) totalReward, 
-                            - steps: (int) total steps taken including those skipped in frame-skipping, 
-                            - wallTime (float): time spent in evaluation till now in seconds
+                    - trainEpisode (int): episode-number, 
+                    - reward (float): totalReward, 
+                    - steps (int): total steps taken including those skipped in frame-skipping, 
+                    - loss (float): mean loss accross all the optmizing steps
+
+        - eval_callback: Callable (default None)
+                - accepts a dict as the only argument
+                - called once at end of each eval-episode
+                - the dict will have the following keys and corresponding values: 
+                    - trainEpisode: (int) episode-number of the last training episode,
+                    - reward: (float) totalReward, 
+                    - steps: (int) total steps taken including those skipped in frame-skipping 
             
         ### returns
             - train_history: dict[str, dict[str, list]]
@@ -346,8 +346,7 @@ class DQN:
             current_start_time = perf_counter()
 
             # train model on this episode
-            (steps, totalReward, 
-            qvalue_stats, average_loss) = self._training_episode(render, episode)
+            (steps, totalReward, average_loss) = self._training_episode(render, episode, training_callback)
 
             # compute times for logging
             current_end_time = perf_counter()
@@ -362,19 +361,13 @@ class DQN:
             # perform eval run if configured
             eval_info = None
             if self._is_evaluation_episode(episode):
-                eval_info = self.evaluate(self.evalExplortionStrategy, EvalEpisodes=self.n_eval, verbose=False, evalEnv=evalEnv)
+                eval_info = self.evaluate(
+                    self.evalExplortionStrategy, EvalEpisodes=self.n_eval, 
+                    verbose=False, evalEnv=evalEnv, eval_callback=eval_callback,
+                    current_training_episode=episode
+                )
                 self._performEvalBookKeeping(episode, eval_info)
                 self._printEvalProgress(eval_info, episode, eval_printFn)
-
-            # fire the callbacks
-            self._call_callbacks(
-                train_episode= episode, train_reward= totalReward, 
-                train_steps= steps, average_loss= average_loss,
-                train_wall_time_elasped = wall_time_elasped,
-                train_episode_time_elasped = episode_time_elasped,
-                eval_info= eval_info, training_callbacks= training_callbacks,
-                qvalue_stats = qvalue_stats
-            )
 
             # early breaking
             if totalReward >= self.breakAtReward:
@@ -396,7 +389,8 @@ class DQN:
         
         return self._returnBook()
 
-    def _training_episode(self, render, episode):
+    def _training_episode(self, render, episode, training_callback):
+
         done = False
         observation = self.trainingEnv.reset()
         info = None # no initial info from gym.Env.reset
@@ -453,15 +447,23 @@ class DQN:
                 print("\nWARNING optimize_every_kth_action > actions taken !")
                 print("\tOptimized the model now (at the end of episode).\n")
 
-        qval_stats = {
-            "min": min_qval_stats.get_min_qvalues(),
-            "max": max_qval_stats.get_max_qvalues()
-        }
+        # call the training callback
+        if training_callback is not None:
+            training_callback({
+                "trainEpisode":episode, "reward":totalReward, 
+                "steps":steps, "loss":average_loss,
+                "qvalue_stats": {
+                    "min": min_qval_stats.get_min_qvalues(),
+                    "max": max_qval_stats.get_max_qvalues()
+                }           
+            })
 
-        return steps, totalReward, qval_stats, average_loss
+        return steps, totalReward, average_loss
 
     def evaluate(self, evalExplortionStrategy:Strategy=greedyAction(), 
-                EvalEpisodes=1, render=False, verbose=True, evalEnv:gym.Env=None):
+                EvalEpisodes=1, render=False, verbose=True, 
+                evalEnv:gym.Env=None, eval_callback:Callable=None,
+                current_training_episode:int=None):
         """ Evaluate the model for EvalEpisodes number of episodes.
 
         ### parameters
@@ -481,6 +483,14 @@ class DQN:
                 - the environment to evaluate on - to be used if the intended 
                 env for evaluation is not the training env. If None (default) 
                 then the env passed in the init is used for evaluation.
+
+        - eval_callback: Callable (default None)
+                - accepts a dict as the only argument
+                - called once at end of each eval-episode
+                - the dict will have the following keys and corresponding values: 
+                    - trainEpisode: (int) episode-number of the last training episode,
+                    - reward: (float) totalReward, 
+                    - steps: (int) total steps taken including those skipped in frame-skipping 
 
         ### returns
             - evalinfo: dict[str, list]
@@ -502,6 +512,9 @@ class DQN:
             # user defines make_state func to make a state from a list of observations and infos
             observation,info = evalEnv.reset(),None # no initial info from usual gym.Env.reset
             state = self.make_state([[observation,info,None,done]], None)
+            # some q-value stats
+            max_qval_stats = MaxQvalue()
+            min_qval_stats = MinQvalue()
             # render
             if render: evalEnv.render()
             while not done:
@@ -514,7 +527,9 @@ class DQN:
                 state = nextState
                 steps += stepsTaken
                 totalReward += sumReward
-                # break episode is required
+                max_qval_stats.update(qvalues)
+                min_qval_stats.update(qvalues)
+                # break episode if required
                 if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
                 # render
                 if render: evalEnv.render()
@@ -524,6 +539,17 @@ class DQN:
             evalRewards.append(totalReward)
             evalSteps.append(steps)
             wallTimes.append(perf_counter() - timeStart)
+            # call callback
+            if eval_callback is not None:
+                eval_callback({
+                    "trainEpisode": current_training_episode,
+                    "reward": totalReward,
+                    "steps": steps,
+                    "qvalue_stats": {
+                        "min": min_qval_stats.get_min_qvalues(),
+                        "max": max_qval_stats.get_max_qvalues()
+                    }    
+                })
             # print
             if verbose:
                 print(f"evalEpisode: {evalEpisode} -> reward: {totalReward} steps: {steps}")
@@ -776,38 +802,6 @@ class DQN:
                     torch.save(self.lr_scheduler.state_dict(), f'{path}/lr_scheduler_statedict.pt')
             print(f'\tTime taken saving stuff: {perf_counter()-timebegin:.2f}s') 
 
-    def _call_callbacks(self, train_episode, train_reward, train_steps, 
-                        average_loss, train_wall_time_elasped, 
-                        train_episode_time_elasped,
-                        eval_info=None, training_callbacks=[],
-                        qvalue_stats=None):
-        """ simply builds a dict and fires the callbacks with this dict """
-        if len(training_callbacks) == 0: return
-
-        callback_param = {
-            "train":{
-                "trainEpisode":train_episode, "reward":train_reward, 
-                "steps":train_steps, "loss":average_loss,
-                "wallTime": train_wall_time_elasped,
-                "episodeTime": train_episode_time_elasped,
-                "qvalue_stats": qvalue_stats           
-            },
-        }
-        if eval_info is not None:
-            data = [eval_info[x] for x in ['rewards', 'steps', 'wallTimes']]
-            callback_param["eval"] = {
-                i:{
-                    "trainEpisode": train_episode, 
-                    "reward":eval_reward, 
-                    "steps": eval_steps, 
-                    "wallTime":eval_walltime
-                }
-                for i, (eval_reward,eval_steps,eval_walltime) \
-                    in enumerate(zip(*data))
-            }
-
-        for callback in training_callbacks: callback(callback_param)
- 
     def _make_skipSteps_fn(self, skipSteps):
         if type(skipSteps) is int:
             steps_to_take = max(1, skipSteps)
