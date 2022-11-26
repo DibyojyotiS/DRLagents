@@ -463,7 +463,7 @@ class DQN:
     def evaluate(self, evalExplortionStrategy:Strategy=greedyAction(), 
                 EvalEpisodes=1, render=False, verbose=True, 
                 evalEnv:gym.Env=None, eval_callback:Callable=None,
-                current_training_episode:int=None):
+                current_training_episode:int=None, MaxStepsPerEvalEpisode=None):
         """ Evaluate the model for EvalEpisodes number of episodes.
 
         ### parameters
@@ -530,7 +530,7 @@ class DQN:
                 max_qval_stats.update(qvalues)
                 min_qval_stats.update(qvalues)
                 # break episode if required
-                if self.MaxStepsPerEpisode and steps >= self.MaxStepsPerEpisode: break
+                if MaxStepsPerEvalEpisode and steps >= MaxStepsPerEvalEpisode: break
                 # render
                 if render: evalEnv.render()
             # decay exploration strategy params
