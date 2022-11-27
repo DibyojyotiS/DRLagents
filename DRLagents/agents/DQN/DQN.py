@@ -44,7 +44,8 @@ class DQN:
                 skipSteps = 0,
                 optimize_every_kth_action = 1,
                 num_gradient_steps = 1,
-                gradient_clips = (-1,1),
+                gradient_clip = 1,
+                gradient_clipping_type = "value",
                 make_state = default_make_state,
                 make_transitions = default_make_transitions,
                 loss = weighted_MSEloss,
@@ -127,8 +128,15 @@ class DQN:
         - num_gradient_steps: int (default 1)
                 - the number of gradient updates every optimize_kth_step.
 
-        - gradient_clips: Tuple[int, int] (default = (-1, 1))
-                - the lower and higher clips for gradient clipping
+        - gradient_clip: float > 0 (default = 1)
+                - max-norm or the half-range of gradient clipping
+        
+        - gradient_clipping_type: "norm" or "value" (default "value")
+                - how to interpret gradient clip:
+                    - "norm": clip gradients with norm gradient_clip
+                                typical value for gradient_clip is 10.0
+                    - "value": clip gradients within [-gradient_clip, gradient_clip]
+                                typical value for gradient clip is 1.0
         
         - make_state: function (default default_make_state)
                 - inputs:
@@ -249,8 +257,8 @@ class DQN:
         self.update_freq_episode = update_freq
         self.optimize_every_kth_action = optimize_every_kth_action
         self.num_gradient_steps = num_gradient_steps
-        self.grad_clip_min = gradient_clips[0]
-        self.grad_clip_max = gradient_clips[-1]
+        self.clip_by_value = gradient_clipping_type == "value"
+        self.grad_clip = gradient_clip
         self.lr_scheduler = lr_scheduler
 
         # eval
@@ -679,7 +687,12 @@ class DQN:
             # minimize loss
             self.optimizer.zero_grad()
             loss.backward()
-            clip_grads(self.online_model, _min=self.grad_clip_min, _max=self.grad_clip_max)
+
+            if self.clip_by_value:
+                nn.utils.clip_grad.clip_grad_value_(self.online_model.parameters(), self.grad_clip)
+            else:
+                nn.utils.clip_grad.clip_grad_norm_(self.online_model.parameters(), self.grad_clip)
+
             self.optimizer.step()
             total_loss += loss.item()
             # uncomment to get an idea of the speed
