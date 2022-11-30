@@ -393,7 +393,7 @@ class DQN:
             if self.lr_scheduler is not None: self.lr_scheduler.step()
 
         # just cuirious to know the total time spent...
-        print("total time elasped:", perf_counter() - train_start_time,'s')  
+        print(f"total time elasped: {perf_counter() - train_start_time}s")  
         
         return self._returnBook()
 
@@ -632,8 +632,10 @@ class DQN:
         # update the start-episode
         self.current_episode = episode + 1
 
-        return print(f'Successfully loaded stuff from {resume_dir}!',
-                    '\nReady to resume training.')
+        return print(
+            f'Successfully loaded stuff from {resume_dir}!'
+            +'\nReady to resume training.'
+        )
    
     def _compute_loss_n_updateBuffer(self, states, actions, rewards, nextStates, dones, indices, sampleWeights):
         """ this is the function used to compute the loss and is called within _optimizeModel. And this function
@@ -765,9 +767,9 @@ class DQN:
         # show progress output
         override = (episode == self.MaxTrainEpisodes-1) # print the last episode always
         if self.printFreq and ((episode % self.printFreq == 0) or override):
-            print(f'episode: {episode}/{self.MaxTrainEpisodes} -> reward: {totalReward},', 
-                    f'steps:{steps}, time-taken: {episode_time_taken/60:.2f}min,',
-                    f'time-elasped: {walltime_elasped/60:.2f}min')
+            print(f'episode: {episode}/{self.MaxTrainEpisodes} -> reward: {totalReward}, ' 
+                    + f'steps:{steps}, time-taken: {episode_time_taken/60:.2f}min, '
+                    + f'time-elasped: {walltime_elasped/60:.2f}min')
             if train_printFn is not None: train_printFn() # call the user-printing function
 
     def _is_evaluation_episode(self, episode):
