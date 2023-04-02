@@ -160,8 +160,8 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         if print_args: printDict(self.__class__.__name__, locals())
 
         self.bufferSize = bufferSize
-        self.beta, self.beta_rate = beta, beta_rate
-        self.alpha, self.alpha_rate = alpha, alpha_rate
+        self.initial_beta, self.beta_rate = beta, beta_rate
+        self.initial_alpha, self.alpha_rate = alpha, alpha_rate
         self.beta_schedule = beta_schedule
         self.alpha_schedule = alpha_schedule
         self.replace_min =  bufferType == 'replace-min'
@@ -184,8 +184,9 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         if not alpha_schedule:
             self.alpha_schedule = self._default_alpha_schedule
 
-        # init the beta and episode counter
+        # init the alpha, beta and episode counter
         self.episode = 0 
+        self.alpha = self.alpha_schedule(0)
         self.beta = self.beta_schedule(0)
 
         # init prefetching (prefetch_wrapper handles nprefetch==0)
@@ -213,10 +214,10 @@ class PrioritizedExperienceRelpayBuffer(ReplayBuffer):
         return int(self._priority_min[1][1])
 
     def _default_beta_schedule(self, episode):
-        return min(1, self.beta + episode*self.beta_rate)
+        return min(1, self.initial_beta + episode*self.beta_rate)
 
     def _default_alpha_schedule(self, episode):
-        return max(0, self.alpha - episode*self.alpha_rate)
+        return max(0, self.initial_alpha - episode*self.alpha_rate)
 
     def store(self, state:Tensor, action:Tensor, 
                 reward:Tensor, nextState:Tensor, done:Tensor):
